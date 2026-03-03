@@ -9,7 +9,6 @@ from database.database import session
 from agent.graph.index import getStateGraph
 from agent.graph.state import initGraphState
 
-
 app_router = SubRouter(__file__, prefix="/app")
 
 
@@ -23,8 +22,8 @@ def handleException(error):
 app_router.configure_authentication(AuthHandler(token_getter=BearerGetter()))
 
 
-@app_router.post("/getIntelligentReply", auth_required=True)
-async def getIntelligentReply(request: Request):
+@app_router.post("/conversationAnalysis", auth_required=True)
+async def conversationAnalysis(request: Request):
     data = request.json()
     # todo: 鉴权+删除dev豁免
     user_id = (

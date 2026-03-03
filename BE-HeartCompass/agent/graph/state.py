@@ -15,7 +15,7 @@ from database.models import (
 
 class Request(TypedDict):
     user_id: int
-    relation_chain_id: int | None
+    relation_chain_id: int
     conversation_screenshots: List[str] | None
     additional_context: str | None
 
@@ -35,33 +35,28 @@ class CrushProfileContext(TypedDict):
 class RecallQueries(TypedDict):
     knowledge_query: str | None  # 从已知信息归一化
     non_knowledge_query: str | None  # 从已知信息归一化
-    knowledge_vector: List[float]
-    non_knowledge_vector: List[float]
 
 
-class RecallResults(TypedDict):
+class AllContext(TypedDict):
     knowledge: List[Knowledge]
     event: List[Event]
     chat_topic: List[ChatTopic]
     derived_insight: List[DerivedInsight]
-
-
-class RankedContext(TypedDict):
-    interaction_signal: List[InteractionSignal]  # 这里再引入InteractionSignal
-    items: List[dict]
-    truncation_info: dict
+    interaction_signal: List[
+        InteractionSignal
+    ]  # 单独引入InteractionSignal，不走召回链路
 
 
 class PromptBundle(TypedDict):
-    system_prompt: str
     context_block: str
-    user_prompt: str
+    final_prompt: str
 
 
 class LLMOutput(TypedDict):
-    reply_candidates: List[str]
-    reasoning: str | None
-    evidence: List[dict]  # 引用的证据项ID/来源
+    message_candidates: List[str]  # 下一步消息候选
+    risks: List[str]  # 风险提示
+    suggestions: List[str]  # 下一步推进话题或行动建议
+    message: str | None  # 错误消息
 
 
 class GraphState(TypedDict):
@@ -69,8 +64,7 @@ class GraphState(TypedDict):
     entities: Entities
     crush_profile_context: CrushProfileContext
     recall_queries: RecallQueries
-    recall_results: RecallResults
-    ranked_context: RankedContext
+    all_context: AllContext
     prompt_bundle: PromptBundle
     llm_output: LLMOutput
 
@@ -91,28 +85,21 @@ def initGraphState(request: Request) -> GraphState:
         "recall_queries": {
             "knowledge_query": None,
             "non_knowledge_query": None,
-            "knowledge_vector": [],
-            "non_knowledge_vector": [],
         },
-        "recall_results": {
+        "all_context": {
             "knowledge": [],
             "event": [],
             "chat_topic": [],
             "derived_insight": [],
-        },
-        "ranked_context": {
             "interaction_signal": [],
-            "items": [],
-            "truncation_info": {},
         },
         "prompt_bundle": {
-            "system_prompt": "",
             "context_block": "",
-            "user_prompt": "",
+            "final_prompt": "",
         },
         "llm_output": {
-            "reply_candidates": [],
-            "reasoning": None,
-            "evidence": [],
+            "message_candidates": [],
+            "risks": [],
+            "suggestions": [],
         },
     }

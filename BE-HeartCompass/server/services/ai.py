@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timezone
+import json
 from typing import List
 
 from agent.react_agent import getAgent, askWithNoContext
@@ -88,10 +88,11 @@ async def extractContextFromScreenshots(
     )
 
 
-# 根据聊天记录截图和 additional_context 生成向量召回query
+# 根据聊天记录截图、additional_context 和对方画像生成向量召回query
 async def generateRecallQueriesFromScreenshots(
     screenshot_urls: List[str],
     additional_context: str,
+    profile: dict,
     is_self: bool,
 ) -> str:
     if not isinstance(screenshot_urls, list) or len(screenshot_urls) == 0:
@@ -114,6 +115,7 @@ async def generateRecallQueriesFromScreenshots(
         ),
         {
             "additional_context": additional_context,
+            "profile": json.dumps(profile, ensure_ascii=False),
         },
     )
     agent = await getAgent()
@@ -125,7 +127,6 @@ async def generateRecallQueriesFromScreenshots(
 # TEST: uv run -m server.services.ai
 if __name__ == "__main__":
     import asyncio
-    import json
     import time
 
     start = time.perf_counter()

@@ -2,11 +2,12 @@
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
-import pprint
+from langchain_core.messages import HumanMessage
 import json
 import asyncio
+import logging
+import os
+import pprint
 
 from database.database import session
 from database.models import (
@@ -14,17 +15,17 @@ from database.models import (
     Crush,
     RelationChain,
     ChainStageHistory,
-    Knowledge,
-    Event,
-    ChatTopic,
     InteractionSignal,
-    DerivedInsight,
 )
 from database.enums import RelationStage
 from server.services.ai import generateRecallQueriesFromScreenshots
+from server.services.embedding import recallEmbedding
 from .state import LLMOutput, GraphState
 from ..llm import prepareLLM
 from ..prompt import getPrompt
+
+logger = logging.getLogger(__name__)
+
 
 # 全局单例
 _graph_instance: CompiledStateGraph | None = None
@@ -72,7 +73,6 @@ async def nodeBuildCrushProfileContext(state: GraphState) -> dict:
 
         _setIfValue("name", crush.name, "姓名")
         _setIfValue("gender", crush.gender.value if crush.gender else None, "性别")
-        _setIfValue("mbti", crush.mbti.value if crush.mbti else None, "MBTI 类型")
         _setIfValue("birthday", crush.birthday, "生日")
         _setIfValue("occupation", crush.occupation, "职业")
         _setIfValue("education", crush.education, "教育背景")
@@ -97,57 +97,302 @@ async def nodeBuildCrushProfileContext(state: GraphState) -> dict:
 
 
 async def nodeBuildRecallQueries(state: GraphState) -> dict:
+    recall_queries = state["recall_queries"]
     screenshot_urls = state["request"].get("conversation_screenshots")
     additional_context = state["request"].get("additional_context")
+    profile = state["crush_profile_context"]["crush_profile"]
     is_self = (
         state["entities"].get("relation_chain").current_stage == RelationStage.SELF
         if state["entities"].get("relation_chain")
         else False
     )
     try:
-        recall_queries = json.loads(
+        queries = json.loads(
             await generateRecallQueriesFromScreenshots(
                 screenshot_urls=screenshot_urls,
                 additional_context=additional_context,
+                profile=profile,
                 is_self=is_self,
             )
         )
-        knowledge_query = recall_queries.get("knowledge_query")
-        non_knowledge_query = recall_queries.get("non_knowledge_query")
-    except json.JSONDecodeError:
-        recall_queries = {}
+        recall_queries["knowledge_query"] = queries.get("knowledge_query")
+        recall_queries["non_knowledge_query"] = queries.get("non_knowledge_query")
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing JSON: {e}")
     return {
-        "recall_queries": {
-            "knowledge_query": knowledge_query,
-            "non_knowledge_query": non_knowledge_query,
-            "knowledge_vector": [],
-            "non_knowledge_vector": [],
-        },
+        "recall_queries": recall_queries,
     }
 
 
-async def node4(state: GraphState) -> dict:
-    pass
+async def nodeRecallKnowledge(state: GraphState) -> dict:
+    recall_queries = state["recall_queries"]
+    all_context = state["all_context"]
+    knowledge_query = recall_queries.get("knowledge_query")
+    if knowledge_query is not None:
+        with session() as db:
+            res = await recallEmbedding(
+                db=db,
+                text=knowledge_query,
+                top_k=10,
+                recall_from=["knowledge"],
+                relation_chain_id=state["request"].get("relation_chain_id"),
+            )
+            if res["status"] == 200:
+                recalled_items = res["items"]
+                all_context["knowledge"] = [item["data"] for item in recalled_items]
+            else:
+                logger.warning(f"Error recalling knowledge items: {res}")
 
-
-async def node5(state: GraphState) -> dict:
-    pass
-
-
-async def node6(state: GraphState) -> dict:
-    pass
-
-
-async def node7(state: GraphState) -> dict:
-    pass
-
-
-async def node8(state: GraphState) -> dict:
-    pprint.pprint(state)
     return {
-        "reply_candidates": state["llm_output"]["reply_candidates"],
-        "reasoning": state["llm_output"]["reasoning"],
-        "evidence": state["llm_output"]["evidence"],
+        "all_context": all_context,
+    }
+
+
+async def nodeRecallNonKnowledge(state: GraphState) -> dict:
+    recall_queries = state["recall_queries"]
+    all_context = state["all_context"]
+    non_knowledge_vector_query = recall_queries.get("non_knowledge_query")
+    if non_knowledge_vector_query is not None:
+        with session() as db:
+            res = await recallEmbedding(
+                db=db,
+                text=non_knowledge_vector_query,
+                top_k=30,
+                recall_from=["event", "chat_topic", "derived_insight"],
+                relation_chain_id=state["request"].get("relation_chain_id"),
+            )
+            if res["status"] == 200:
+                recalled_items = res["items"]
+                for item in recalled_items:
+                    match item["source"]:
+                        case "event":
+                            all_context["event"].append(item["data"])
+                        case "chat_topic":
+                            all_context["chat_topic"].append(item["data"])
+                        case "derived_insight":
+                            all_context["derived_insight"].append(item["data"])
+            else:
+                logger.warning(f"Error recalling non-knowledge items: {res}")
+
+    return {
+        "all_context": all_context,
+    }
+
+
+async def nodeGetInteractionSignal(state: GraphState) -> dict:
+    all_context = state["all_context"]
+    with session() as db:
+        latest_interaction_signal = (
+            db.query(InteractionSignal)
+            .filter(
+                InteractionSignal.relation_chain_id
+                == state["request"].get("relation_chain_id"),
+                InteractionSignal.is_active == True,
+            )
+            .order_by(InteractionSignal.created_at.desc())
+            .first()
+        )
+        if latest_interaction_signal:
+            all_context["interaction_signal"] = [latest_interaction_signal]
+
+    return {
+        "all_context": all_context,
+    }
+
+
+async def nodeOrganizeContext(state: GraphState) -> dict:
+    crush_profile_context = state["crush_profile_context"]
+    all_context = state["all_context"]
+    prompt_bundle = state["prompt_bundle"]
+
+    context_block = ""
+    context_block += f"**对方画像：**\n"
+    context_block += f"MBTI类型：{crush_profile_context['crush_mbti']}\n"
+    for key, value in crush_profile_context["crush_profile"].items():
+        context_block += f"{key}：{value}\n"
+
+    context_block += "\n"
+
+    def _getValue(item, key):
+        if isinstance(item, dict):
+            value = item.get(key)
+        else:
+            value = getattr(item, key, None)
+        return value.value if hasattr(value, "value") else value  # 同时处理Enum类型
+
+    def _formatList(value):
+        if value is None:
+            return ""
+        if isinstance(value, list):
+            return "、".join(
+                [str(v) for v in value if v is not None and str(v).strip()]
+            )
+        return str(value)
+
+    def _appendIfValue(label, value):
+        if value is None:
+            return ""
+        text = str(value).strip()
+        if not text:
+            return ""
+        return f"{label}：{text}\n"
+
+    for event in all_context["event"]:
+        content = _getValue(event, "content")
+        summary = _getValue(event, "summary")
+        date = _getValue(event, "date")
+        outcome = _getValue(event, "outcome")
+        weight = _getValue(event, "weight")
+        other_info = _formatList(_getValue(event, "other_info"))
+
+        context_block += "**过往事件：**\n"
+        context_block += _appendIfValue("摘要", summary)
+        context_block += _appendIfValue("内容", content)
+        context_block += _appendIfValue("时间", date)
+        context_block += _appendIfValue("结果导向", outcome)
+        context_block += _appendIfValue("重要性", weight)
+        context_block += _appendIfValue("其他信息", other_info)
+        context_block += "\n"
+
+    for chat_topic in all_context["chat_topic"]:
+        title = _getValue(chat_topic, "title")
+        summary = _getValue(chat_topic, "summary")
+        content = _getValue(chat_topic, "content")
+        tags = _formatList(_getValue(chat_topic, "tags"))
+        participants = _formatList(_getValue(chat_topic, "participants"))
+        topic_time = _getValue(chat_topic, "topic_time")
+        attitude = _getValue(chat_topic, "attitude")
+        weight = _getValue(chat_topic, "weight")
+        other_info = _formatList(_getValue(chat_topic, "other_info"))
+
+        context_block += "**过往聊天话题：**\n"
+        context_block += _appendIfValue("标题", title)
+        context_block += _appendIfValue("摘要", summary)
+        context_block += _appendIfValue("内容", content)
+        context_block += _appendIfValue("标签", tags)
+        context_block += _appendIfValue("参与者", participants)
+        context_block += _appendIfValue("时间", topic_time)
+        context_block += _appendIfValue("情绪", attitude)
+        context_block += _appendIfValue("重要性", weight)
+        context_block += _appendIfValue("其他信息", other_info)
+        context_block += "\n"
+
+    for derived_insight in all_context["derived_insight"]:
+        insight = _getValue(derived_insight, "insight")
+        confidence = _getValue(derived_insight, "confidence")
+        weight = _getValue(derived_insight, "weight")
+        additional_info = _formatList(_getValue(derived_insight, "additional_info"))
+
+        context_block += "**部分推断/洞察：**\n"
+        context_block += _appendIfValue("洞察", insight)
+        context_block += _appendIfValue("置信度", confidence)
+        context_block += _appendIfValue("重要性", weight)
+        context_block += _appendIfValue("其他信息", additional_info)
+        context_block += "\n"
+
+    for interaction_signal in all_context["interaction_signal"]:
+        frequency = _getValue(interaction_signal, "frequency")
+        attitude = _getValue(interaction_signal, "attitude")
+        window = _getValue(interaction_signal, "window")
+        note = _getValue(interaction_signal, "note")
+        confidence = _getValue(interaction_signal, "confidence")
+        weight = _getValue(interaction_signal, "weight")
+        context_block += "**互动信号：**\n"
+        context_block += _appendIfValue("频率", frequency)
+        context_block += _appendIfValue("态度", attitude)
+        context_block += _appendIfValue("观测窗口", window)
+        context_block += _appendIfValue("备注", note)
+        context_block += _appendIfValue("置信度", confidence)
+        context_block += _appendIfValue("重要性", weight)
+        context_block += "\n"
+
+    for knowledge in all_context["knowledge"]:
+        summary = _getValue(knowledge, "summary")
+        content = _getValue(knowledge, "content")
+        weight = _getValue(knowledge, "weight")
+        context_block += "**可能参考的相关知识：**\n"
+        context_block += _appendIfValue("摘要", summary)
+        context_block += _appendIfValue("内容", content)
+        context_block += _appendIfValue("重要性", weight)
+        context_block += "\n"
+
+    prompt_bundle["context_block"] = context_block
+
+    return {
+        "prompt_bundle": prompt_bundle,
+    }
+
+
+async def nodeFetchPrompt(state: GraphState) -> dict:
+    prompt_bundle = state["prompt_bundle"]
+
+    request = state["request"]
+    additional_context = request.get("additional_context") or ""
+    context_block = prompt_bundle.get("context_block") or ""
+    final_prompt = await getPrompt(
+        os.getenv("CONVERSATION_ANALYSIS"),
+        {
+            "additional_context": additional_context,
+            "context_block": context_block,
+        },
+    )
+    prompt_bundle["final_prompt"] = final_prompt
+
+    return {
+        "prompt_bundle": prompt_bundle,
+    }
+
+
+async def nodeCallLLM(state: GraphState) -> dict:
+    llm: ChatOpenAI = prepareLLM()
+    screenshot_urls = state["request"].get("conversation_screenshots")
+    prompt_bundle = state["prompt_bundle"]
+    final_prompt = prompt_bundle.get("final_prompt") or ""
+
+    msg = [{"type": "text", "text": final_prompt}]
+    if screenshot_urls:
+        for url in screenshot_urls:
+            if not url:
+                continue
+            msg.append({"type": "image_url", "image_url": {"url": url}})
+
+    messages = [HumanMessage(content=msg)]
+    response = await llm.ainvoke(messages)
+    response_content = response.content if hasattr(response, "content") else response
+    parsed = None
+    if isinstance(response_content, dict):
+        parsed = response_content
+    elif isinstance(response_content, str):
+        try:
+            parsed = json.loads(response_content)
+        except json.JSONDecodeError:
+            logger.warning(f"Error parsing LLM response: {response_content}")
+
+    llm_output = state["llm_output"]
+    if isinstance(parsed, dict):
+        if parsed.get("status") == 200:
+            data = parsed.get("data") or {}
+            llm_output["message_candidates"] = data.get("message_candidates", []) or []
+            llm_output["risks"] = data.get("risks", []) or []
+            llm_output["suggestions"] = data.get("suggestions", []) or []
+        else:
+            llm_output["message"] = parsed.get("message") or ""
+
+    return {
+        "llm_output": llm_output,
+    }
+
+
+async def nodeOutput(state: GraphState) -> dict:
+    llm_output = state["llm_output"]
+    message_candidates = llm_output.get("message_candidates") or []
+    risks = llm_output.get("risks") or []
+    suggestions = llm_output.get("suggestions") or []
+
+    return {
+        "message_candidates": message_candidates,
+        "risks": risks,
+        "suggestions": suggestions,
     }
 
 
@@ -159,30 +404,32 @@ async def getStateGraph() -> CompiledStateGraph:
     async with _graph_lock:
         if _graph_instance is not None:
             return _graph_instance
-        # todo: 放到节点中
-        # system_prompt = await getPrompt(os.getenv("SYSTEM_PROMPT"))
-        # llm: ChatOpenAI = prepareLLM()
+
         graph = StateGraph(
             state_schema=GraphState, input_schema=GraphState, output_schema=LLMOutput
         )
         graph.add_node("nodeLoadEntity", nodeLoadEntity)
         graph.add_node("nodeBuildCrushProfileContext", nodeBuildCrushProfileContext)
         graph.add_node("nodeBuildRecallQueries", nodeBuildRecallQueries)
-        graph.add_node("node4", node4)
-        graph.add_node("node5", node5)
-        graph.add_node("node6", node6)
-        graph.add_node("node7", node7)
-        graph.add_node("node8", node8)
+        graph.add_node("nodeRecallKnowledge", nodeRecallKnowledge)
+        graph.add_node("nodeRecallNonKnowledge", nodeRecallNonKnowledge)
+        graph.add_node("nodeGetInteractionSignal", nodeGetInteractionSignal)
+        graph.add_node("nodeOrganizeContext", nodeOrganizeContext)
+        graph.add_node("nodeFetchPrompt", nodeFetchPrompt)
+        graph.add_node("nodeCallLLM", nodeCallLLM)
+        graph.add_node("nodeOutput", nodeOutput)
 
         graph.set_entry_point("nodeLoadEntity")
         graph.add_edge("nodeLoadEntity", "nodeBuildCrushProfileContext")
         graph.add_edge("nodeBuildCrushProfileContext", "nodeBuildRecallQueries")
-        graph.add_edge("nodeBuildRecallQueries", "node4")
-        graph.add_edge("node4", "node5")
-        graph.add_edge("node5", "node6")
-        graph.add_edge("node6", "node7")
-        graph.add_edge("node7", "node8")
-        graph.add_edge("node8", END)
+        graph.add_edge("nodeBuildRecallQueries", "nodeRecallKnowledge")
+        graph.add_edge("nodeRecallKnowledge", "nodeRecallNonKnowledge")
+        graph.add_edge("nodeRecallNonKnowledge", "nodeGetInteractionSignal")
+        graph.add_edge("nodeGetInteractionSignal", "nodeOrganizeContext")
+        graph.add_edge("nodeOrganizeContext", "nodeFetchPrompt")
+        graph.add_edge("nodeFetchPrompt", "nodeCallLLM")
+        graph.add_edge("nodeCallLLM", "nodeOutput")
+        graph.add_edge("nodeOutput", END)
 
         _graph_instance = graph.compile()
         return _graph_instance
