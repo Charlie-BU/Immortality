@@ -16,8 +16,11 @@ from database.models import (
 class Request(TypedDict):
     user_id: int
     relation_chain_id: int
+    # 情况1: 聊天记录分析
     conversation_screenshots: List[str] | None
     additional_context: str | None
+    # 情况2: 自然语言叙述分析
+    narrative: str | None
 
 
 class Entities(TypedDict):

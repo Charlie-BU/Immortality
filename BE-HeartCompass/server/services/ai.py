@@ -124,6 +124,32 @@ async def generateRecallQueriesFromScreenshots(
     )
 
 
+# 根据自然语言叙述和对方画像生成向量召回query
+async def generateRecallQueriesFromNarrative(
+    narrative: str,
+    profile: dict,
+    is_self: bool,
+) -> str:
+    if not isinstance(narrative, str) or not narrative.strip():
+        return "Wrong narrative format"
+    prompt = await getPrompt(
+        os.getenv(
+            "GENERATE_RECALL_QUERIES_FROM_NARRATIVE_SELF"
+            if is_self
+            else "GENERATE_RECALL_QUERIES_FROM_NARRATIVE"
+        ),
+        {
+            "narrative": narrative.strip(),
+            "profile": json.dumps(profile, ensure_ascii=False),
+        },
+    )
+    agent = await getAgent()
+    return await askWithNoContext(
+        react_agent=agent,
+        prompt=prompt,
+    )
+
+
 # TEST: uv run -m server.services.ai
 if __name__ == "__main__":
     import asyncio
