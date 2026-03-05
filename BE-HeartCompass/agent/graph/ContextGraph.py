@@ -1,13 +1,10 @@
-# 模式2：StateGraph 工作流
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.messages import HumanMessage
-from langgraph.checkpoint.postgres import PostgresSaver
 import json
 import asyncio
 import logging
-import os
 
 from database.database import session
 from database.models import (
@@ -23,9 +20,12 @@ from server.services.ai import (
     generateRecallQueriesFromNarrative,
 )
 from server.services.embedding import recallEmbedding
-from .state import LLMOutput, GraphState
-from ..llm import prepareLLM
-from ..prompt import getPrompt
+from .state import (
+    ContextGraphInput,
+    ContextGraphOutput,
+    ContextGraphState,
+)
+from .checkpointer import getCheckpointer
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +33,9 @@ logger = logging.getLogger(__name__)
 # 全局单例
 _context_graph_instance: CompiledStateGraph | None = None
 _context_graph_lock = asyncio.Lock()
-_analysis_graph_instance: CompiledStateGraph | None = None
-_analysis_graph_lock = asyncio.Lock()
 
 
-"""以下为 ContextGraph 节点"""
-
-
-async def nodeLoadEntity(state: GraphState) -> dict:
+async def nodeLoadEntity(state: ContextGraphState) -> dict:
     with session() as db:
         user = db.get(User, state["request"]["user_id"])
         relation_chain = db.get(RelationChain, state["request"]["relation_chain_id"])
@@ -61,7 +56,7 @@ async def nodeLoadEntity(state: GraphState) -> dict:
         }
 
 
-async def nodeBuildCrushProfileContext(state: GraphState) -> dict:
+async def nodeBuildCrushProfileContext(state: ContextGraphState) -> dict:
     crush = state["entities"].get("crush")
     crush_profile = {}
     crush_mbti = None
@@ -105,7 +100,7 @@ async def nodeBuildCrushProfileContext(state: GraphState) -> dict:
 
 
 # 根据聊天截图和对方画像生成向量召回query
-async def nodeBuildRecallQueriesFromScreenshots(state: GraphState) -> dict:
+async def nodeBuildRecallQueriesFromScreenshots(state: ContextGraphState) -> dict:
     recall_queries = state["recall_queries"]
     screenshot_urls = state["request"].get("conversation_screenshots")
     additional_context = state["request"].get("additional_context")
@@ -134,7 +129,7 @@ async def nodeBuildRecallQueriesFromScreenshots(state: GraphState) -> dict:
 
 
 # 根据自然语言叙述和对方画像生成向量召回query
-async def nodeBuildRecallQueriesFromNarrative(state: GraphState) -> dict:
+async def nodeBuildRecallQueriesFromNarrative(state: ContextGraphState) -> dict:
     recall_queries = state["recall_queries"]
     narrative = state["request"].get("narrative")
     profile = state["crush_profile_context"]["crush_profile"]
@@ -160,7 +155,7 @@ async def nodeBuildRecallQueriesFromNarrative(state: GraphState) -> dict:
     }
 
 
-async def nodeRecallKnowledge(state: GraphState) -> dict:
+async def nodeRecallKnowledge(state: ContextGraphState) -> dict:
     recall_queries = state["recall_queries"]
     all_context = state["all_context"]
     knowledge_query = recall_queries.get("knowledge_query")
@@ -184,7 +179,7 @@ async def nodeRecallKnowledge(state: GraphState) -> dict:
     }
 
 
-async def nodeRecallNonKnowledge(state: GraphState) -> dict:
+async def nodeRecallNonKnowledge(state: ContextGraphState) -> dict:
     recall_queries = state["recall_queries"]
     all_context = state["all_context"]
     non_knowledge_vector_query = recall_queries.get("non_knowledge_query")
@@ -215,7 +210,7 @@ async def nodeRecallNonKnowledge(state: GraphState) -> dict:
     }
 
 
-async def nodeGetInteractionSignal(state: GraphState) -> dict:
+async def nodeGetInteractionSignal(state: ContextGraphState) -> dict:
     all_context = state["all_context"]
     with session() as db:
         latest_interaction_signal = (
@@ -236,7 +231,7 @@ async def nodeGetInteractionSignal(state: GraphState) -> dict:
     }
 
 
-async def nodeOrganizeContext(state: GraphState) -> dict:
+async def nodeOrganizeContext(state: ContextGraphState) -> dict:
     relation_chain = state["entities"].get("relation_chain")
     crush_profile_context = state["crush_profile_context"]
     all_context = state["all_context"]
@@ -359,105 +354,8 @@ async def nodeOrganizeContext(state: GraphState) -> dict:
     prompt_bundle["context_block"] = context_block
 
     return {
+        "request": state["request"],
         "prompt_bundle": prompt_bundle,
-    }
-
-
-"""以下为 AnalysisGraph 节点"""
-
-
-async def nodeFetchPromptFromScreenshots(state: GraphState) -> dict:
-    prompt_bundle = state["prompt_bundle"]
-
-    request = state["request"]
-    additional_context = request.get("additional_context") or ""
-    context_block = prompt_bundle.get("context_block") or ""
-    final_prompt = await getPrompt(
-        os.getenv("CONVERSATION_ANALYSIS"),
-        {
-            "additional_context": additional_context,
-            "context_block": context_block,
-        },
-    )
-    prompt_bundle["final_prompt"] = final_prompt
-
-    return {
-        "prompt_bundle": prompt_bundle,
-    }
-
-
-async def nodeFetchPromptFromNarrative(state: GraphState) -> dict:
-    prompt_bundle = state["prompt_bundle"]
-
-    context_block = prompt_bundle.get("context_block") or ""
-    final_prompt = await getPrompt(
-        os.getenv("NARRATIVE_ANALYSIS"),
-        {
-            "narrative": state["request"].get("narrative") or "",
-            "context_block": context_block,
-        },
-    )
-    prompt_bundle["final_prompt"] = final_prompt
-
-    return {
-        "prompt_bundle": prompt_bundle,
-    }
-
-
-async def nodeCallLLM(state: GraphState) -> dict:
-    llm: ChatOpenAI = prepareLLM()
-    prompt_bundle = state["prompt_bundle"]
-    final_prompt = prompt_bundle.get("final_prompt") or ""
-
-    # todo: 删调试
-    logger.info(f"final_prompt: \n{final_prompt}")
-
-    msg = [{"type": "text", "text": final_prompt}]
-    # 聊天记录分析才会有图片
-    screenshot_urls = state["request"].get("conversation_screenshots")
-    if screenshot_urls:
-        for url in screenshot_urls:
-            if not url:
-                continue
-            msg.append({"type": "image_url", "image_url": {"url": url}})
-
-    messages = [HumanMessage(content=msg)]
-    response = await llm.ainvoke(messages)
-    response_content = response.content if hasattr(response, "content") else response
-    parsed = None
-    if isinstance(response_content, dict):
-        parsed = response_content
-    elif isinstance(response_content, str):
-        try:
-            parsed = json.loads(response_content)
-        except json.JSONDecodeError:
-            logger.warning(f"Error parsing LLM response: {response_content}")
-
-    llm_output = state["llm_output"]
-    if isinstance(parsed, dict):
-        if parsed.get("status") == 200:
-            data = parsed.get("data") or {}
-            llm_output["message_candidates"] = data.get("message_candidates", []) or []
-            llm_output["risks"] = data.get("risks", []) or []
-            llm_output["suggestions"] = data.get("suggestions", []) or []
-        else:
-            llm_output["message"] = parsed.get("message") or ""
-
-    return {
-        "llm_output": llm_output,
-    }
-
-
-async def nodeOutput(state: GraphState) -> dict:
-    llm_output = state["llm_output"]
-    message_candidates = llm_output.get("message_candidates") or []
-    risks = llm_output.get("risks") or []
-    suggestions = llm_output.get("suggestions") or []
-
-    return {
-        "message_candidates": message_candidates,
-        "risks": risks,
-        "suggestions": suggestions,
     }
 
 
@@ -470,7 +368,9 @@ async def getContextGraph() -> CompiledStateGraph:
             return _context_graph_instance
 
         graph = StateGraph(
-            state_schema=GraphState, input_schema=GraphState, output_schema=GraphState
+            state_schema=ContextGraphState,
+            input_schema=ContextGraphInput,
+            output_schema=ContextGraphOutput,
         )
         graph.add_node("nodeLoadEntity", nodeLoadEntity)
         graph.add_node("nodeBuildCrushProfileContext", nodeBuildCrushProfileContext)
@@ -490,7 +390,7 @@ async def getContextGraph() -> CompiledStateGraph:
         graph.add_edge("nodeLoadEntity", "nodeBuildCrushProfileContext")
 
         # 通过_routeRecallQueries按narrative分流
-        def _routeRecallQueries(state: GraphState) -> str:
+        def _routeRecallQueries(state: ContextGraphState) -> str:
             narrative = state["request"].get("narrative")
             if isinstance(narrative, str) and narrative.strip():
                 return "nodeBuildRecallQueriesFromNarrative"
@@ -509,45 +409,6 @@ async def getContextGraph() -> CompiledStateGraph:
 
         # PostgresSaver实现短期记忆
         # todo：trim
-        with PostgresSaver.from_conn_string(os.getenv("DATABASE_URI")) as checkpointer:
-            _context_graph_instance = graph.compile(checkpointer=checkpointer)
+        checkpointer = await getCheckpointer()
+        _context_graph_instance = graph.compile(checkpointer=checkpointer)
         return _context_graph_instance
-
-
-async def getAnalysisGraph() -> CompiledStateGraph:
-    global _analysis_graph_instance
-    if _analysis_graph_instance is not None:
-        return _analysis_graph_instance
-    async with _analysis_graph_lock:
-        if _analysis_graph_instance is not None:
-            return _analysis_graph_instance
-
-        graph = StateGraph(
-            state_schema=GraphState, input_schema=GraphState, output_schema=LLMOutput
-        )
-        graph.add_node("nodeFetchPromptFromNarrative", nodeFetchPromptFromNarrative)
-        graph.add_node("nodeFetchPromptFromScreenshots", nodeFetchPromptFromScreenshots)
-        graph.add_node("nodeCallLLM", nodeCallLLM)
-        graph.add_node("nodeOutput", nodeOutput)
-
-        # 通过_routeAnalysisPrompt按narrative分流
-        def _routeAnalysisPrompt(state: GraphState) -> str:
-            narrative = state["request"].get("narrative")
-            if isinstance(narrative, str) and narrative.strip():
-                return "nodeFetchPromptFromNarrative"
-            return "nodeFetchPromptFromScreenshots"
-
-        graph.add_conditional_edges(
-            START,
-            _routeAnalysisPrompt,
-        )
-        graph.add_edge("nodeFetchPromptFromNarrative", "nodeCallLLM")
-        graph.add_edge("nodeFetchPromptFromScreenshots", "nodeCallLLM")
-        graph.add_edge("nodeCallLLM", "nodeOutput")
-        graph.add_edge("nodeOutput", END)
-
-        # PostgresSaver实现短期记忆
-        # todo：trim
-        with PostgresSaver.from_conn_string(os.getenv("DATABASE_URI")) as checkpointer:
-            _analysis_graph_instance = graph.compile(checkpointer=checkpointer)
-        return _analysis_graph_instance

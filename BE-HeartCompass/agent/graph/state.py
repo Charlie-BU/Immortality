@@ -62,17 +62,42 @@ class LLMOutput(TypedDict):
     message: str | None  # 错误消息
 
 
-class GraphState(TypedDict):
+class ContextGraphInput(TypedDict):
+    request: Request
+
+
+# 只作为graph中间状态，不直接暴露
+class ContextGraphState(TypedDict):
     request: Request
     entities: Entities
     crush_profile_context: CrushProfileContext
     recall_queries: RecallQueries
     all_context: AllContext
     prompt_bundle: PromptBundle
+
+
+class ContextGraphOutput(TypedDict):
+    request: Request
+    prompt_bundle: PromptBundle
+
+
+class AnalysisGraphInput(TypedDict):
+    request: Request
+    prompt_bundle: PromptBundle
+
+
+# 只作为graph中间状态，不直接暴露
+class AnalysisGraphState(TypedDict):
+    request: Request
+    prompt_bundle: PromptBundle
     llm_output: LLMOutput
 
 
-def initGraphState(request: Request) -> GraphState:
+class AnalysisGraphOutput(LLMOutput):
+    llm_output: LLMOutput
+
+
+def initContextGraphState(request: Request) -> ContextGraphState:
     return {
         "request": request,
         "entities": {
@@ -99,10 +124,5 @@ def initGraphState(request: Request) -> GraphState:
         "prompt_bundle": {
             "context_block": "",
             "final_prompt": "",
-        },
-        "llm_output": {
-            "message_candidates": [],
-            "risks": [],
-            "suggestions": [],
         },
     }

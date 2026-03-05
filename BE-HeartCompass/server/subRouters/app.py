@@ -5,9 +5,9 @@ from robyn.authentication import BearerGetter
 
 from ..authentication import AuthHandler
 from ..services.user import userGetUserIdByAccessToken
-from database.database import session
-from agent.graph.index import getContextGraph, getAnalysisGraph
-from agent.graph.state import initGraphState
+from agent.graph.ContextGraph import getContextGraph
+from agent.graph.AnalysisGraph import getAnalysisGraph
+from agent.graph.state import initContextGraphState
 
 app_router = SubRouter(__file__, prefix="/app")
 
@@ -40,7 +40,7 @@ async def conversationAnalysis(request: Request):
     # 调用图
     context_graph = await getContextGraph()
     analysis_graph = await getAnalysisGraph()
-    initial_state = initGraphState(
+    initial_state = initContextGraphState(
         {
             "user_id": user_id,
             "relation_chain_id": int(relation_chain_id),
@@ -60,7 +60,8 @@ async def conversationAnalysis(request: Request):
 
 
 # 自然语言叙述分析
-async def NarrativeAnalysis(request: Request):
+@app_router.post("/narrativeAnalysis", auth_required=True)
+async def narrativeAnalysis(request: Request):
     data = request.json()
     # todo: 鉴权+删除dev豁免
     user_id = (
@@ -73,7 +74,7 @@ async def NarrativeAnalysis(request: Request):
     # 调用图
     context_graph = await getContextGraph()
     analysis_graph = await getAnalysisGraph()
-    initial_state = initGraphState(
+    initial_state = initContextGraphState(
         {
             "user_id": user_id,
             "relation_chain_id": int(relation_chain_id),
