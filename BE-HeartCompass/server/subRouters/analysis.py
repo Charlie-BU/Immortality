@@ -4,25 +4,25 @@ from robyn.robyn import Request, Response
 from robyn.authentication import BearerGetter
 
 from ..authentication import AuthHandler
-from ..services.app import appConversationAnalysis, appNarrativeAnalysis
+from ..services.analysis import analysisConversationAnalysis, analysisNarrativeAnalysis
 from ..services.user import userGetUserIdByAccessToken
 
 
-app_router = SubRouter(__file__, prefix="/app")
+analysis_router = SubRouter(__file__, prefix="/analysis")
 
 
 # 全局异常处理
-@app_router.exception
+@analysis_router.exception
 def handleException(error):
     return Response(status_code=500, description=f"error msg: {error}", headers={})
 
 
 # 鉴权中间件
-app_router.configure_authentication(AuthHandler(token_getter=BearerGetter()))
+analysis_router.configure_authentication(AuthHandler(token_getter=BearerGetter()))
 
 
 # 聊天记录分析
-@app_router.post("/conversationAnalysis", auth_required=True)
+@analysis_router.post("/conversationAnalysis", auth_required=True)
 async def conversationAnalysis(request: Request):
     data = request.json()
     # todo: 删除dev豁免
@@ -39,7 +39,7 @@ async def conversationAnalysis(request: Request):
     additional_context = data.get(
         "additional_context", ""
     )
-    res = await appConversationAnalysis(
+    res = await analysisConversationAnalysis(
         user_id=user_id,
         relation_chain_id=int(relation_chain_id),
         conversation_screenshots=conversation_screenshots,
@@ -50,7 +50,7 @@ async def conversationAnalysis(request: Request):
 
 
 # 自然语言叙述分析
-@app_router.post("/narrativeAnalysis", auth_required=True)
+@analysis_router.post("/narrativeAnalysis", auth_required=True)
 async def narrativeAnalysis(request: Request):
     data = request.json()
     # todo: 删除dev豁免
@@ -61,7 +61,7 @@ async def narrativeAnalysis(request: Request):
     )
     relation_chain_id = data["relation_chain_id"]
     narrative = data["narrative"]
-    res = await appNarrativeAnalysis(
+    res = await analysisNarrativeAnalysis(
         user_id=user_id,
         relation_chain_id=int(relation_chain_id),
         narrative=narrative,

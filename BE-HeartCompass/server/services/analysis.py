@@ -13,7 +13,7 @@ from database.models import RelationChain, Analysis
 from database.enums import AnalysisType
 
 
-async def appConversationAnalysis(
+async def analysisConversationAnalysis(
     user_id: int,
     relation_chain_id: int,
     conversation_screenshots: List[str],
@@ -81,7 +81,7 @@ async def appConversationAnalysis(
     }
 
 
-async def appNarrativeAnalysis(
+async def analysisNarrativeAnalysis(
     user_id: int,
     relation_chain_id: int,
     narrative: str,

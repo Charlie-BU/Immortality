@@ -11,6 +11,7 @@ from database.models import (
     RelationChain,
     ChainStageHistory,
     InteractionSignal,
+    Knowledge,
 )
 from database.enums import RelationStage
 from server.services.ai import (
@@ -170,26 +171,35 @@ async def stepBuildRecallQueriesFromNarrative(
 
 
 async def stepRecallKnowledge(
-    request: Request,
-    recall_queries: RecallQueries,
+    crush_profile_context: CrushProfileContext,
 ) -> list:
     recalled_knowledges = []
 
-    knowledge_query = recall_queries.get("knowledge_query")
-    if knowledge_query is not None:
-        with session() as db:
-            res = await recallEmbedding(
-                db=db,
-                text=knowledge_query,
-                top_k=10,
-                recall_from=["knowledge"],
-                relation_chain_id=request.get("relation_chain_id"),
-            )
-            if res["status"] == 200:
-                recalled_items = res["items"]
-                recalled_knowledges.extend([item["data"] for item in recalled_items])
-            else:
-                logger.warning(f"Error recalling knowledge items: {res}")
+    # 通过mbti关键字召回相关知识，不使用向量召回
+    mbti = crush_profile_context["crush_mbti"]
+    with session() as db:
+        knowledges_for_this_mbti = (
+            db.query(Knowledge)
+            .filter(Knowledge.subject.like(f"%{mbti.upper()}%"))
+            .order_by(Knowledge.weight.desc())
+            .all()
+        )
+        recalled_knowledges.extend(knowledges_for_this_mbti)
+    # knowledge_query = recall_queries.get("knowledge_query")
+    # if knowledge_query is not None:
+    #     with session() as db:
+    #         res = await recallEmbedding(
+    #             db=db,
+    #             text=knowledge_query,
+    #             top_k=10,
+    #             recall_from=["knowledge"],
+    #             relation_chain_id=request.get("relation_chain_id"),
+    #         )
+    #         if res["status"] == 200:
+    #             recalled_items = res["items"]
+    #             recalled_knowledges.extend([item["data"] for item in recalled_items])
+    #         else:
+    #             logger.warning(f"Error recalling knowledge items: {res}")
 
     return recalled_knowledges
 
@@ -394,7 +404,7 @@ async def node(state: ContextGraphState) -> ContextGraphState:
             request, entities, crush_profile_context
         )
 
-    recalled_knowledges = await stepRecallKnowledge(request, recall_queries)
+    recalled_knowledges = await stepRecallKnowledge(crush_profile_context)
     recalled_non_knowledges = await stepRecallNonKnowledge(request, recall_queries)
     interaction_signals = await stepGetInteractionSignal(request)
     all_context = {
