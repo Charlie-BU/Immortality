@@ -2,7 +2,7 @@ from robyn.robyn import Response
 
 from .subRouters.user import user_router
 from .subRouters.context import context_router
-from .subRouters.app import app_router
+from .subRouters.analysis import analysis_router
 from .subRouters.context_crud import context_crud_router
 from agent.react_agent import wrapChat
 
@@ -15,7 +15,7 @@ async def registerRouters(app, react_agent):
 
     app.include_router(user_router)
     app.include_router(context_router)
-    app.include_router(app_router)
+    app.include_router(analysis_router)
     app.include_router(context_crud_router)
 
     app.get("/ping")(lambda: "pong")
