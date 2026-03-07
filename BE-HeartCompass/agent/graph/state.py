@@ -18,6 +18,7 @@ class Request(TypedDict):
     relation_chain_id: int
     # 情况1: 聊天记录分析
     conversation_screenshots: List[str] | None
+    crush_name: str | None  # 对方在截图中出现的姓名或位置（左侧/右侧）
     additional_context: str | None
     # 情况2: 自然语言叙述分析
     narrative: str | None
