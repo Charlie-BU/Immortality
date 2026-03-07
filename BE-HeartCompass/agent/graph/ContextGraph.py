@@ -106,6 +106,7 @@ async def stepBuildRecallQueriesFromScreenshots(
     non_knowledge_query = None
 
     screenshot_urls = request.get("conversation_screenshots")
+    crush_name = request.get("crush_name")
     additional_context = request.get("additional_context")
     profile = crush_profile_context["crush_profile"]
     is_self = (
@@ -117,6 +118,7 @@ async def stepBuildRecallQueriesFromScreenshots(
         queries = json.loads(
             await generateRecallQueriesFromScreenshots(
                 screenshot_urls=screenshot_urls,
+                crush_name=crush_name,
                 additional_context=additional_context,
                 profile=profile,
                 is_self=is_self,

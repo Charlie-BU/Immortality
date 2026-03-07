@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from typing import List
 from sqlalchemy.orm import Session
 
@@ -472,6 +473,9 @@ async def contextAddContextByScreenshots(
                         if item not in current_words_to_user:
                             crush.words_to_user.append(item)
                             current_words_to_user.add(item)
+                    # 最多保留MAX_WORDS_TO_USER条，多余从头部删除
+                    if len(crush.words_to_user) > int(os.getenv("MAX_WORDS_TO_USER")):
+                        del crush.words_to_user[:-int(os.getenv("MAX_WORDS_TO_USER"))]
                 if new_words_from_user is not None and isinstance(
                     new_words_from_user, list
                 ):
@@ -480,6 +484,9 @@ async def contextAddContextByScreenshots(
                         if item not in current_words_from_user:
                             crush.words_from_user.append(item)
                             current_words_from_user.add(item)
+                    # 最多保留MAX_WORDS_FROM_USER条，多余从头部删除
+                    if len(crush.words_from_user) > int(os.getenv("MAX_WORDS_FROM_USER")):
+                        del crush.words_from_user[:-int(os.getenv("MAX_WORDS_FROM_USER"))]
                 # dict类型：新增
                 if new_other_info is not None and isinstance(new_other_info, dict):
                     crush.other_info.append(new_other_info)

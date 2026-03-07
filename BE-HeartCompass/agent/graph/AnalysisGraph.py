@@ -26,10 +26,12 @@ _analysis_graph_lock = asyncio.Lock()
 
 
 async def stepFetchPromptFromScreenshots(request: Request) -> str:
+    crush_name = request.get("crush_name") or ""
     additional_context = request.get("additional_context") or ""
     final_prompt = await getPrompt(
         os.getenv("CONVERSATION_ANALYSIS"),
         {
+            "crush_name": crush_name,  # 对方在截图中出现的姓名或位置（左侧/右侧）
             "additional_context": additional_context,
         },
     )
