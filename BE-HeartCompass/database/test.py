@@ -1,4 +1,4 @@
-def modifyUser():
+def addUser():
     with session() as db:
         new_user = User(
             username="Test",
