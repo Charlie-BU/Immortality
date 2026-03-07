@@ -436,7 +436,7 @@ class ChatTopic(Base, SerializableMixin):
         return f"<ChatTopic {self.summary}>"
 
 
-# ---- 互动信号（通过CHAT_TOPIC推断）（暂弃用） ----
+# ---- 互动信号（通过CHAT_TOPIC推断）（暂未启用） ----
 class InteractionSignal(Base, SerializableMixin):
     __tablename__ = "interaction_signal"
 
