@@ -101,12 +101,6 @@ class User(Base, SerializableMixin):
     email = Column(String(128), nullable=True, unique=True, comment="用户邮箱")
     level = Column(Enum(UserLevel), default=UserLevel.L4, comment="用户等级")
     mbti = Column(Enum(MBTI), nullable=True, comment="用户MBTI类型")
-    personality_tags = Column(
-        MutableList.as_mutable(ARRAY(Text)),
-        nullable=False,
-        default=[],
-        comment="用户性格",
-    )
     created_at = Column(
         DateTime, default=datetime.now(timezone.utc), comment="用户创建时间"
     )
@@ -142,12 +136,6 @@ class Crush(Base, SerializableMixin):
         default=[],
         comment="交流风格",
     )
-    personality_tags = Column(
-        MutableList.as_mutable(ARRAY(Text)),
-        nullable=False,
-        default=[],
-        comment="性格",
-    )  # 手动选择
     likes = Column(
         MutableList.as_mutable(ARRAY(Text)),
         nullable=False,

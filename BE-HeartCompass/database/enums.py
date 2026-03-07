@@ -44,6 +44,7 @@ class MBTI(enum.Enum):
 
 class RelationStage(enum.Enum):
     SELF = "self"
+    FAMILY = "family"
     STRANGER = "stranger"
     FRIEND = "friend"
     AMBIGUOUS = "ambiguous"

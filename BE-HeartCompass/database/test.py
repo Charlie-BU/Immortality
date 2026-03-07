@@ -1,7 +1,7 @@
 def modifyUser():
     with session() as db:
         charlie = db.query(User).filter(User.username == "Charlie").first()
-        charlie.personality_tags = ["Optimistic", "Creative"]
+        charlie.email = "charlie@example.com"
         db.commit()
         print(charlie.toJson())
 

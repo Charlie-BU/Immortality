@@ -80,7 +80,6 @@ async def stepBuildCrushProfileContext(entities: Entities) -> CrushProfileContex
         _setIfValue("residence", crush.residence, "常住地")
         _setIfValue("hometown", crush.hometown, "家乡")
         _setIfValue("communication_style", crush.communication_style, "交流风格")
-        _setIfValue("personality_tags", crush.personality_tags, "性格")
         _setIfValue("likes", crush.likes, "喜好")
         _setIfValue("dislikes", crush.dislikes, "不喜欢")
         _setIfValue("boundaries", crush.boundaries, "个人边界")
