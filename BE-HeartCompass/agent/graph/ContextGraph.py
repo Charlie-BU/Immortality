@@ -11,11 +11,13 @@ from database.models import (
     RelationChain,
     ChainStageHistory,
     InteractionSignal,
+    Knowledge,
 )
 from database.enums import RelationStage
 from server.services.ai import (
     generateRecallQueriesFromScreenshots,
     generateRecallQueriesFromNarrative,
+    generateRecallQueriesSimplyFromProfile,
 )
 from server.services.embedding import recallEmbedding
 from .state import (
@@ -169,27 +171,61 @@ async def stepBuildRecallQueriesFromNarrative(
     }
 
 
+# 根据自然语言叙述和对方画像生成向量召回query
+async def stepBuildRecallQueriesSimplyFromProfile(
+    crush_profile_context: CrushProfileContext,
+) -> RecallQueries:
+    recall_queries: RecallQueries = {
+        "knowledge_query": None,
+        "non_knowledge_query": None,
+    }
+    profile = crush_profile_context["crush_profile"]
+    try:
+        queries = json.loads(
+            await generateRecallQueriesSimplyFromProfile(
+                profile=profile,
+            )
+        )
+        recall_queries["knowledge_query"] = queries.get("knowledge_query")
+        recall_queries["non_knowledge_query"] = queries.get("non_knowledge_query")
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing JSON: {e}")
+    return {
+        "knowledge_query": recall_queries.get("knowledge_query"),
+        "non_knowledge_query": recall_queries.get("non_knowledge_query"),
+    }
+
+
 async def stepRecallKnowledge(
-    request: Request,
-    recall_queries: RecallQueries,
+    crush_profile_context: CrushProfileContext,
 ) -> list:
     recalled_knowledges = []
 
-    knowledge_query = recall_queries.get("knowledge_query")
-    if knowledge_query is not None:
-        with session() as db:
-            res = await recallEmbedding(
-                db=db,
-                text=knowledge_query,
-                top_k=10,
-                recall_from=["knowledge"],
-                relation_chain_id=request.get("relation_chain_id"),
-            )
-            if res["status"] == 200:
-                recalled_items = res["items"]
-                recalled_knowledges.extend([item["data"] for item in recalled_items])
-            else:
-                logger.warning(f"Error recalling knowledge items: {res}")
+    # 通过mbti关键字召回相关知识，不使用向量召回
+    mbti = crush_profile_context["crush_mbti"]
+    with session() as db:
+        knowledges_for_this_mbti = (
+            db.query(Knowledge)
+            .filter(Knowledge.summary.like(f"%{mbti.upper()}%"))
+            .order_by(Knowledge.weight.desc())
+            .all()
+        )
+        recalled_knowledges.extend(knowledges_for_this_mbti)
+    # knowledge_query = recall_queries.get("knowledge_query")
+    # if knowledge_query is not None:
+    #     with session() as db:
+    #         res = await recallEmbedding(
+    #             db=db,
+    #             text=knowledge_query,
+    #             top_k=10,
+    #             recall_from=["knowledge"],
+    #             relation_chain_id=request.get("relation_chain_id"),
+    #         )
+    #         if res["status"] == 200:
+    #             recalled_items = res["items"]
+    #             recalled_knowledges.extend([item["data"] for item in recalled_items])
+    #         else:
+    #             logger.warning(f"Error recalling knowledge items: {res}")
 
     return recalled_knowledges
 
@@ -253,6 +289,7 @@ async def stepOrganizeContext(
     entities: Entities,
     crush_profile_context: CrushProfileContext,
     all_context: AllContext,
+    forVirtualFigure: bool,
 ) -> str:
     relation_chain = entities.get("relation_chain")
 
@@ -284,7 +321,11 @@ async def stepOrganizeContext(
     context_block += (
         f"**当前双方关系**：{_getValue(relation_chain, 'current_stage')}\n\n"
     )
-    context_block += f"**用户对对方的交谈风格**：{_formatList(crush_profile_context["crush_profile"].get("words_from_user"))}\n\n"
+    print("crush_profile_context", crush_profile_context)
+    if forVirtualFigure:
+        context_block += f"**重要！** **节选对方对用户的交谈风格**：{_formatList(crush_profile_context["crush_profile"].get("words_to_user"))}\n\n"
+    else:
+        context_block += f"**重要！** **节选用户对对方的交谈风格**：{_formatList(crush_profile_context["crush_profile"].get("words_from_user"))}\n\n"
     context_block += f"**对方画像**：\n"
     context_block += f"MBTI类型：{crush_profile_context['crush_mbti']}\n"
     for key, value in crush_profile_context["crush_profile"].items():
@@ -377,6 +418,7 @@ async def stepOrganizeContext(
 
 
 async def node(state: ContextGraphState) -> ContextGraphState:
+    forVirtualFigure = False
     request = state["request"]
     entities = await stepLoadEntity(request)
     crush_profile_context = await stepBuildCrushProfileContext(entities)
@@ -385,16 +427,27 @@ async def node(state: ContextGraphState) -> ContextGraphState:
         "knowledge_query": None,
         "non_knowledge_query": None,
     }
-    if request.get("narrative") and request.get("narrative") != "":
+    if (
+        request.get("conversation_screenshots")
+        and len(request.get("conversation_screenshots")) != 0
+    ):
+        # 情况1: 聊天记录召回
+        recall_queries = await stepBuildRecallQueriesFromScreenshots(
+            request, entities, crush_profile_context
+        )
+    elif request.get("narrative") and request.get("narrative") != "":
+        # 情况2: 自然语言叙述召回
         recall_queries = await stepBuildRecallQueriesFromNarrative(
             request, entities, crush_profile_context
         )
     else:
-        recall_queries = await stepBuildRecallQueriesFromScreenshots(
-            request, entities, crush_profile_context
+        forVirtualFigure = True
+        # 情况3: 无输入召回
+        recall_queries = await stepBuildRecallQueriesSimplyFromProfile(
+            crush_profile_context
         )
 
-    recalled_knowledges = await stepRecallKnowledge(request, recall_queries)
+    recalled_knowledges = await stepRecallKnowledge(crush_profile_context)
     recalled_non_knowledges = await stepRecallNonKnowledge(request, recall_queries)
     interaction_signals = await stepGetInteractionSignal(request)
     all_context = {
@@ -406,7 +459,7 @@ async def node(state: ContextGraphState) -> ContextGraphState:
     }
 
     context_block = await stepOrganizeContext(
-        entities, crush_profile_context, all_context
+        entities, crush_profile_context, all_context, forVirtualFigure
     )
     return {
         "request": request,

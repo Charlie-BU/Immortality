@@ -251,6 +251,10 @@ class RelationChain(Base, SerializableMixin):
         default=True,
         comment="是否进行中",
     )
+
+    # 在虚拟形象对话中，放到SystemMessage中
+    context_block = Column(Text, nullable=True, comment="关系与画像上下文")
+
     created_at = Column(
         DateTime, default=datetime.now(timezone.utc), comment="关系链创建时间"
     )
@@ -707,7 +711,7 @@ class Analysis(Base, SerializableMixin):
     )
 
     context_block = Column(
-        Text, nullable=False, default="", comment="全部上下文信息"
+        Text, nullable=False, default="", comment="关系与画像上下文"
     )  # 用于记忆
 
     created_at = Column(

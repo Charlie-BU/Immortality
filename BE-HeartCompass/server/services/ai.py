@@ -152,6 +152,23 @@ async def generateRecallQueriesFromNarrative(
     )
 
 
+# 根据画像生成向量召回query
+async def generateRecallQueriesSimplyFromProfile(
+    profile: dict,
+) -> str:
+    prompt = await getPrompt(
+        os.getenv("GENERATE_RECALL_QUERIES_FROM_PROFILE"),
+        {
+            "profile": json.dumps(profile, ensure_ascii=False),
+        },
+    )
+    agent = await getAgent()
+    return await askWithNoContext(
+        react_agent=agent,
+        prompt=prompt,
+    )
+
+
 # TEST: uv run -m server.services.ai
 # if __name__ == "__main__":
 # import asyncio
