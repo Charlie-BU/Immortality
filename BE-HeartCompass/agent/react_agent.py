@@ -42,7 +42,7 @@ async def getAgent() -> CompiledStateGraph:
         if _agent_instance is not None:
             return _agent_instance
         system_prompt = await getPrompt(os.getenv("SYSTEM_PROMPT"))
-        llm: ChatOpenAI = prepareLLM()
+        llm: ChatOpenAI = prepareLLM(model="DOUBAO_2_0_LITE")
         agent_instance = create_agent(model=llm, tools=[], system_prompt=system_prompt)
         _agent_instance = agent_instance
         return agent_instance

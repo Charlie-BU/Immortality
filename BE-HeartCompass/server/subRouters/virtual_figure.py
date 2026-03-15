@@ -4,7 +4,6 @@ from robyn.authentication import BearerGetter
 import asyncio
 import os
 import time
-import json
 import logging
 
 from ..authentication import AuthHandler
@@ -26,6 +25,8 @@ virtual_figure_router = SubRouter(__file__, prefix="/virtual_figure")
 # 全局单连接状态
 _active_connection = {"websocket": None, "user_id": None, "relation_chain_id": None}
 _active_lock = asyncio.Lock()
+
+# todo：心跳机制和断开重连
 
 
 # 发送统一结构的错误消息
@@ -78,7 +79,6 @@ async def _validateConnection(websocket: WebSocket) -> tuple[int, int] | None:
     return relation_chain_id, user_id
 
 
-# todo: mock 处理
 # 将消息递交agent，返回对方回复
 # 注意：耗时操作
 async def _processMessages(relation_chain_id: int, temp_messages: list) -> list:
