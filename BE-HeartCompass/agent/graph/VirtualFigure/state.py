@@ -17,7 +17,7 @@ class Request(TypedDict):
 class Memory(TypedDict):
     messages: Annotated[
         List[BaseMessage], add_messages
-    ]  # 存放SystemMessage、HumanMessage和AIMessage
+    ]  # 存放HumanMessage和AIMessage
     context_block: str  # 关系与画像上下文
     recalled_facts_from_db: str  # 根据本轮消息召回的Knowledge、Event、ChatTopic、InteractionSignal、DerivedInsight
     recalled_facts_from_mem0: List[dict]  # Mem0 记忆库召回的记忆

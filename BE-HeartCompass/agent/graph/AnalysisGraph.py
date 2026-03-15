@@ -54,7 +54,7 @@ async def stepCallLLM(
     context_block: str,
     final_prompt: str,
 ) -> LLMOutput:
-    llm: ChatOpenAI = prepareLLM()
+    llm: ChatOpenAI = prepareLLM(model="DOUBAO_2_0_LITE")
     
     msg = [{"type": "text", "text": final_prompt}]
     # 聊天记录分析才会有图片

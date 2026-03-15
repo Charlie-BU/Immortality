@@ -220,7 +220,7 @@ async def nodeBuildMessage(state: VirtualFigureGraphState) -> dict:
 
 
 async def nodeCallLLM(state: VirtualFigureGraphState) -> VirtualFigureGraphOutput:
-    llm: ChatOpenAI = prepareLLM()
+    llm: ChatOpenAI = prepareLLM(model="DOUBAO_2_0_LITE")
     messages_to_call = [
         SystemMessage(
             content=((await getPrompt(os.getenv("VIRTUAL_FIGURE_SYSTEM_PROMPT"))) or "")
