@@ -1,4 +1,3 @@
-# 模式1：ReAct Agent
 from langchain.agents import create_agent
 from langgraph.graph.state import CompiledStateGraph
 from langchain_openai import ChatOpenAI
@@ -33,6 +32,7 @@ _agent_instance: Optional[CompiledStateGraph] = None
 _agent_lock = asyncio.Lock()
 
 
+# 暂弃用
 async def getAgent() -> CompiledStateGraph:
     global _agent_instance
     if _agent_instance is not None:
@@ -107,22 +107,3 @@ async def wrapChat(react_agent: CompiledStateGraph):
         )
 
     return chat
-
-
-# 无上下文直接调用agent
-async def askWithNoContext(
-    react_agent: CompiledStateGraph,
-    prompt: str,
-    images_urls: Optional[List[str]] = None,
-) -> str:
-    if images_urls:
-        content = [{"type": "text", "text": prompt}] + [
-            {"type": "image_url", "image_url": {"url": url}} for url in images_urls
-        ]
-        messages = [HumanMessage(content=content)]
-    else:
-        messages = [HumanMessage(content=prompt)]
-    resp = await react_agent.ainvoke({"messages": messages})
-    if resp and "messages" in resp and len(resp["messages"]) > 0:
-        return resp["messages"][-1].content
-    return ""

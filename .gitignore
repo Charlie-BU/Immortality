@@ -13,3 +13,4 @@ wheels/
 
 # Alembic migrations
 BE-HeartCompass/alembic/versions/
+.trae/rules/rule.md

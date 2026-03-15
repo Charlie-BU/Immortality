@@ -2,8 +2,8 @@ import os
 import json
 from typing import List
 
-from agent.react_agent import getAgent, askWithNoContext
 from agent.prompt import getPrompt
+from agent.llm import prepareLLM, ainvokeWithNoContext
 
 
 # 对上下文记录或知识库条目进行摘要
@@ -12,9 +12,9 @@ async def summarizeContext(content: str) -> str:
         os.getenv("SUMMARIZE_CONTENT"),
         {"content": content},
     )
-    agent = await getAgent()
-    return await askWithNoContext(
-        react_agent=agent,
+    llm = prepareLLM(model="DOUBAO_2_0_MINI")
+    return await ainvokeWithNoContext(
+        llm=llm,
         prompt=prompt,
     )
 
@@ -25,9 +25,9 @@ async def extractKnowledge(content: str) -> str:
         os.getenv("EXTRACT_KNOWLEDGE"),
         {"content": content},
     )
-    agent = await getAgent()
-    return await askWithNoContext(
-        react_agent=agent,
+    llm = prepareLLM(model="DOUBAO_2_0_LITE")
+    return await ainvokeWithNoContext(
+        llm=llm,
         prompt=prompt,
     )
 
@@ -42,9 +42,9 @@ async def extractContextFromNaturalLanguage(content: str, is_self: bool) -> str:
         ),
         {"content": content},
     )
-    agent = await getAgent()
-    return await askWithNoContext(
-        react_agent=agent,
+    llm = prepareLLM(model="DOUBAO_2_0_LITE")
+    return await ainvokeWithNoContext(
+        llm=llm,
         prompt=prompt,
     )
 
@@ -82,10 +82,8 @@ async def extractContextFromScreenshots(
             "additional_context": additional_context,
         },
     )
-    agent = await getAgent()
-    return await askWithNoContext(
-        react_agent=agent, prompt=prompt, images_urls=cleaned_urls
-    )
+    llm = prepareLLM(model="DOUBAO_2_0_LITE")
+    return await ainvokeWithNoContext(llm=llm, prompt=prompt, images_urls=cleaned_urls)
 
 
 # 根据聊天记录截图、additional_context 和对方画像生成向量召回query
@@ -120,10 +118,8 @@ async def generateRecallQueriesFromScreenshots(
             "profile": json.dumps(profile, ensure_ascii=False),
         },
     )
-    agent = await getAgent()
-    return await askWithNoContext(
-        react_agent=agent, prompt=prompt, images_urls=cleaned_urls
-    )
+    llm = prepareLLM(model="DOUBAO_2_0_MINI")
+    return await ainvokeWithNoContext(llm=llm, prompt=prompt, images_urls=cleaned_urls)
 
 
 # 根据自然语言叙述和对方画像生成向量召回query
@@ -145,9 +141,9 @@ async def generateRecallQueriesFromNarrative(
             "profile": json.dumps(profile, ensure_ascii=False),
         },
     )
-    agent = await getAgent()
-    return await askWithNoContext(
-        react_agent=agent,
+    llm = prepareLLM(model="DOUBAO_2_0_MINI")
+    return await ainvokeWithNoContext(
+        llm=llm,
         prompt=prompt,
     )
 
@@ -162,27 +158,8 @@ async def generateRecallQueriesSimplyFromProfile(
             "profile": json.dumps(profile, ensure_ascii=False),
         },
     )
-    agent = await getAgent()
-    return await askWithNoContext(
-        react_agent=agent,
+    llm = prepareLLM(model="DOUBAO_2_0_MINI")
+    return await ainvokeWithNoContext(
+        llm=llm,
         prompt=prompt,
     )
-
-
-# TEST: uv run -m server.services.ai
-# if __name__ == "__main__":
-# import asyncio
-# import time
-
-# start = time.perf_counter()
-# res = asyncio.run(
-#     extractContextFromScreenshots(
-#         [
-#             "https://charlie-assets.oss-rg-china-mainland.aliyuncs.com/images/article/image_5095a6fc17.png",
-#             "https://charlie-assets.oss-rg-china-mainland.aliyuncs.com/images/article/c32cc20f89699777e53b41be55d11279_07894cb3e4.jpg",
-#         ],
-#         "浔～溯",
-#     )
-# )
-# print(json.dumps(json.loads(res), ensure_ascii=False, indent=4))
-# print(f"\nDuration(s):  {time.perf_counter() - start}")

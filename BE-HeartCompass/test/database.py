@@ -5,7 +5,7 @@ def addUser():
             email="test@example.com",
             password="12345",
             mbti="INTP",
-            gender="MALE"
+            gender="MALE",
         )
         db.add(new_user)
         db.commit()
@@ -44,13 +44,7 @@ async def addMBTIKnowledgeToKnowledgeBase():
 
 if __name__ == "__main__":
     import asyncio
-    import sys
     import json
-    from pathlib import Path
-
-    if __package__ is None or __package__ == "":
-        project_root = Path(__file__).resolve().parent.parent
-        sys.path.insert(0, str(project_root))
 
     from server.services.context import contextAddKnowledge
     from database.database import session
