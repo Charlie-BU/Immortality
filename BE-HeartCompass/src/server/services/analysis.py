@@ -55,8 +55,8 @@ async def analysisConversationAnalysis(
             "additional_context": additional_context,
         }
     )
-    context_graph = await getContextGraph()
-    analysis_graph = await getAnalysisGraph()
+    context_graph = getContextGraph()
+    analysis_graph = getAnalysisGraph()
     # todo
     context_state: ContextGraphOutput = await context_graph.ainvoke(initial_state)
     result: AnalysisGraphOutput = await analysis_graph.ainvoke(

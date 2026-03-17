@@ -22,4 +22,5 @@ dependencies = [
     "psycopg-binary>=3.3.3",
     "psycopg>=3.3.3",
     "langgraph-checkpoint-postgres>=3.0.4",
+    "langgraph-cli[inmem]>=0.4.18",
 ]

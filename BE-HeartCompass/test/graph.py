@@ -14,7 +14,7 @@ async def main():
             "for_virtual_figure": False,
         }
     )
-    context_graph = await getContextGraph()
+    context_graph = getContextGraph()
     result = await context_graph.ainvoke(state)
     print(result)
 
