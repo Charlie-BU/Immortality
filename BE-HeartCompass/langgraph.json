@@ -1,0 +1,9 @@
+{
+  "dockerfile_lines": [],
+  "graphs": {
+    "ContextGraph": "./src/agent/graph/ContextGraph/graph.py:ContextGraph"
+  },
+  "python_version": "3.13",
+  "env": "./.env",
+  "dependencies": ["."]
+}

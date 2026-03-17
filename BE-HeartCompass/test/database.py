@@ -46,8 +46,8 @@ if __name__ == "__main__":
     import asyncio
     import json
 
-    from server.services.context import contextAddKnowledge
-    from database.database import session
-    from database.models import User
+    from src.server.services.context import contextAddKnowledge
+    from src.database.database import session
+    from src.database.models import User
 
     asyncio.run(addMBTIKnowledgeToKnowledgeBase())

@@ -9,10 +9,10 @@ import logging
 from ..authentication import AuthHandler
 from ..services.user import userGetUserIdByAccessToken
 from ..services.virtual_figure import vfRecalculateContextBlock
-from database.database import session
-from database.models import RelationChain
-from agent.graph.VirtualFigureGraph.graph import getVirtualFigureGraph
-from agent.graph.VirtualFigureGraph.state import (
+from src.database.database import session
+from src.database.models import RelationChain
+from src.agent.graph.VirtualFigureGraph.graph import getVirtualFigureGraph
+from src.agent.graph.VirtualFigureGraph.state import (
     VirtualFigureGraphOutput,
     initVirtualFigureGraphState,
 )

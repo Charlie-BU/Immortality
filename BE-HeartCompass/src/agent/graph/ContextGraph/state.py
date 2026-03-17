@@ -1,6 +1,6 @@
 from typing import List, TypedDict, Literal
 
-from database.models import (
+from src.database.models import (
     Knowledge,
     Event,
     ChatTopic,

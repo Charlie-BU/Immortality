@@ -12,10 +12,10 @@ from .state import (
 from ...llm import prepareLLM
 from ...prompt import getPrompt
 from ..utils import getValueFromEntity, formatList, appendLabelIfValue
-from database.database import session
-from database.models import RelationChain
-from server.services.virtual_figure import vfRecalculateContextBlock
-from server.services.embedding import recallEmbeddingFromDB
+from src.database.database import session
+from src.database.models import RelationChain
+from src.server.services.virtual_figure import vfRecalculateContextBlock
+from src.server.services.embedding import recallEmbeddingFromDB
 
 
 logger = logging.getLogger(__name__)

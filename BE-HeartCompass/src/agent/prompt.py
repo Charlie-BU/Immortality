@@ -3,7 +3,7 @@ import html as html_lib
 import re
 from typing import Optional, Any, List
 
-from request import fetch
+from src.request import fetch
 
 
 def extractPromptFromPromptMinder(

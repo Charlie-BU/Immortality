@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from database.models import Event
+from src.database.models import Event
 
 
 async def ccDeleteEvent(db: Session, id: int) -> dict:

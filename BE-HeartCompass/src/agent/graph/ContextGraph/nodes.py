@@ -3,17 +3,17 @@ import logging
 
 from .state import ContextGraphState
 from ..utils import getValueFromEntity, formatList, appendLabelIfValue
-from database.database import session
-from database.models import (
+from src.database.database import session
+from src.database.models import (
     RelationChain,
     InteractionSignal,
     Knowledge,
 )
-from server.services.ai import (
+from src.server.services.ai import (
     generateRecallQueriesFromScreenshots,
     generateRecallQueriesFromNarrative,
 )
-from server.services.embedding import recallEmbeddingFromDB
+from src.server.services.embedding import recallEmbeddingFromDB
 
 logger = logging.getLogger(__name__)
 

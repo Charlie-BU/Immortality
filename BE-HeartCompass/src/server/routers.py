@@ -5,7 +5,7 @@ from .subRouters.context import context_router
 from .subRouters.analysis import analysis_router
 from .subRouters.context_crud import context_crud_router
 from .subRouters.virtual_figure import virtual_figure_router
-from agent.react_agent import wrapChat
+from src.agent.react_agent import wrapChat
 
 
 async def registerRouters(app, react_agent):

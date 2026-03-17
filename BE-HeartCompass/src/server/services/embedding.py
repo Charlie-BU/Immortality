@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from database.models import (
+from src.database.models import (
     ContextEmbedding,
     Crush,
     Event,
@@ -16,9 +16,9 @@ from database.models import (
     Knowledge,
     RelationChain,
 )
-from database.enums import EmbeddingType
-from agent.embedding import vectorizeText
-from utils import cleanList
+from src.database.enums import EmbeddingType
+from src.agent.embedding import vectorizeText
+from src.utils import cleanList
 
 
 logger = logging.getLogger(__name__)

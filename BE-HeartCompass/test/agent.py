@@ -1,6 +1,6 @@
 import asyncio
 import dotenv
-from agent.llm import ainvokeWithNoContext, prepareLLM
+from src.agent.llm import ainvokeWithNoContext, prepareLLM
 
 dotenv.load_dotenv()
 

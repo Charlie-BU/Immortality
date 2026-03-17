@@ -6,8 +6,8 @@ from jose import jwt
 import os
 from datetime import datetime, timedelta, timezone
 
-from database.models import User
-from database.enums import parseEnum, UserGender, MBTI
+from src.database.models import User
+from src.database.enums import parseEnum, UserGender, MBTI
 
 
 ALGORITHM = os.getenv("ALGORITHM")

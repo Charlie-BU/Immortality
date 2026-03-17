@@ -10,9 +10,9 @@ from .ai import (
     extractContextFromNaturalLanguage,
 )
 from .embedding import createOrUpdateEmbedding2DB
-from database.models import RelationChain, Knowledge, Event, ChatTopic
-from database.enums import parseEnum, Attitude, ChatChannel, RelationStage
-from utils import cleanList
+from src.database.models import RelationChain, Knowledge, Event, ChatTopic
+from src.database.enums import parseEnum, Attitude, ChatChannel, RelationStage
+from src.utils import cleanList
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ from robyn.authentication import BearerGetter
 
 from ..authentication import AuthHandler
 from ..services.context_crud import ccDeleteEvent
-from database.database import session
+from src.database.database import session
 
 
 context_crud_router = SubRouter(__file__, prefix="/context")

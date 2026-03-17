@@ -3,7 +3,7 @@ from robyn.robyn import Request, Response
 from robyn.authentication import BearerGetter
 
 from ..authentication import AuthHandler
-from database.database import session
+from src.database.database import session
 from ..services.user import (
     userGetUserIdByAccessToken,
     userLogin,

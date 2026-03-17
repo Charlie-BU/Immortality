@@ -2,7 +2,7 @@ import os
 from robyn.robyn import Request, Identity
 from robyn.authentication import AuthenticationHandler
 
-from database.database import session
+from src.database.database import session
 from .services.user import decodeAccessToken, userGetUserById
 
 

@@ -2,8 +2,8 @@ import os
 import json
 from typing import List
 
-from agent.prompt import getPrompt
-from agent.llm import prepareLLM, ainvokeWithNoContext
+from src.agent.prompt import getPrompt
+from src.agent.llm import prepareLLM, ainvokeWithNoContext
 
 
 # 对上下文记录或知识库条目进行摘要

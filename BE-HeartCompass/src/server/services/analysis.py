@@ -1,15 +1,15 @@
 from typing import List
 
-from agent.graph.ContextGraph.graph import getContextGraph
-from agent.graph.ContextGraph.state import ContextGraphOutput, initContextGraphState
-from agent.graph.AnalysisGraph.graph import getAnalysisGraph
-from agent.graph.AnalysisGraph.state import (
+from src.agent.graph.ContextGraph.graph import getContextGraph
+from src.agent.graph.ContextGraph.state import ContextGraphOutput, initContextGraphState
+from src.agent.graph.AnalysisGraph.graph import getAnalysisGraph
+from src.agent.graph.AnalysisGraph.state import (
     AnalysisGraphInput,
     AnalysisGraphOutput,
 )
-from database.database import session
-from database.models import RelationChain, Analysis
-from database.enums import AnalysisType
+from src.database.database import session
+from src.database.models import RelationChain, Analysis
+from src.database.enums import AnalysisType
 
 
 async def analysisConversationAnalysis(

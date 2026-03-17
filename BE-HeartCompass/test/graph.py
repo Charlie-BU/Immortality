@@ -1,8 +1,8 @@
 import time
 import asyncio
 
-from agent.graph.ContextGraph.graph import getContextGraph
-from agent.graph.ContextGraph.state import initContextGraphState
+from src.agent.graph.ContextGraph.graph import getContextGraph
+from src.agent.graph.ContextGraph.state import initContextGraphState
 
 async def main():
     state = initContextGraphState(
