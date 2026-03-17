@@ -24,7 +24,7 @@ async def vfRecalculateContextBlock(
                 "message": "You are not in this relation chain",
             }
     # 调用图
-    context_graph = await getContextGraph()
+    context_graph = getContextGraph()
     initial_state = initContextGraphState(
         {
             "user_id": user_id,

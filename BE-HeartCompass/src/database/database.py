@@ -1,9 +1,11 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+_project_root = Path(__file__).resolve().parents[2]
+load_dotenv(_project_root / ".env", override=True)
 
 engine = create_engine(
     url=os.getenv("DATABASE_URI") or "",
