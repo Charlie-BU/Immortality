@@ -10,6 +10,8 @@ wheels/
 .venv
 .env
 .DS_Store
+.langgraph_api
 
 # Alembic migrations
 BE-HeartCompass/alembic/versions/
+.trae/rules/rule.md
