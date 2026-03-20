@@ -53,7 +53,6 @@ def buildBaseAnalysisGraph() -> StateGraph:
     graph.add_edge("nodeCallLLM", END)
 
     return graph
-    # return graph.compile(checkpointer=InMemorySaver())
 
 
 def buildAnalysisGraph() -> CompiledStateGraph:
