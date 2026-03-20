@@ -1,5 +1,5 @@
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, RemoveMessage
 import json
 import logging
 import os
@@ -14,26 +14,23 @@ logger = logging.getLogger(__name__)
 
 async def nodeFetchSystemPromptFromScreenshots(state: AnalysisGraphState) -> dict:
     system_prompt = await getPrompt(
-        # todo: 提示词修改
         os.getenv("CONVERSATION_ANALYSIS"),
-        # {
-        #     "crush_name": crush_name,  # 对方在截图中出现的姓名或位置（左侧/右侧）
-        #     "additional_context": additional_context,
-        # },
     )
     return {"system_prompt": system_prompt}
 
 
 async def nodeFetchSystemPromptFromNarrative(state: AnalysisGraphState) -> dict:
     system_prompt = await getPrompt(
-        # todo: 提示词修改
         os.getenv("NARRATIVE_ANALYSIS"),
     )
     return {"system_prompt": system_prompt}
 
 
 async def nodeCallLLM(state: AnalysisGraphState) -> dict:
-    llm: ChatOpenAI = prepareLLM(model="DOUBAO_2_0_LITE")
+    llm: ChatOpenAI = prepareLLM(model="DOUBAO_2_0_LITE", options={
+        "temperature": 0.2,
+        "reasoning_effort": "medium",
+    })
     llm_with_tools = llm.bind_tools([useKnowledge])
 
     type = state["request"].get("type")
@@ -67,20 +64,22 @@ async def nodeCallLLM(state: AnalysisGraphState) -> dict:
 
     response = await llm_with_tools.ainvoke(messages)
     # 处理tool call
-    response = await handleIfToolCall(
-        tools_and_args_handlers=[
-            ToolAndItsArgsHandler(
-                tool=useKnowledge,
-                args_handler=lambda _tool_call, _messages: {
-                    "relation_chain_id": state["request"].get("relation_chain_id")
-                },
-            )
-        ],
-        messages=messages,
-        llm_with_tools=llm_with_tools,
-        llm_response=response,
-        max_tool_round=3,
-    )
+    response = (
+        await handleIfToolCall(
+            tools_and_args_handlers=[
+                ToolAndItsArgsHandler(
+                    tool=useKnowledge,
+                    args_handler=lambda _tool_call, _messages: {
+                        "relation_chain_id": state["request"].get("relation_chain_id")
+                    },
+                )
+            ],
+            messages=messages,
+            llm_with_tools=llm_with_tools,
+            llm_response=response,
+            max_tool_round=3,
+        )
+    )[0]
 
     response_content = response.content if hasattr(response, "content") else response
     parsed = None
@@ -108,4 +107,20 @@ async def nodeCallLLM(state: AnalysisGraphState) -> dict:
         else:
             llm_output["message"] = parsed.get("message") or ""
 
-    return {"llm_output": llm_output}
+    # 把新一轮加入记忆
+    # todo：实际没有用到，每次invoke都是新的messages，不会有old的memory
+    messages_in_memory = state.get("messages", [])
+    messages_to_update_memory = []
+    non_system_messages = []
+    for msg in messages_in_memory:
+        if isinstance(msg, SystemMessage):
+            if getattr(msg, "id", None) is not None:
+                messages_to_update_memory.append(RemoveMessage(id=msg.id))
+            continue
+        non_system_messages.append(msg)
+    messages_to_update_memory.append(SystemMessage(content=state["system_prompt"]))
+    messages_to_update_memory.append(SystemMessage(content=state["context_block"]))
+    messages_to_update_memory.extend(non_system_messages)
+    messages_to_update_memory.append(HumanMessage(content=human_message))
+    messages_to_update_memory.append(response)
+    return {"llm_output": llm_output, "messages": messages_to_update_memory}

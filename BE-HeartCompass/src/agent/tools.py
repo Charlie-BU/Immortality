@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 @tool
 def useKnowledge(relation_chain_id: Annotated[int, "Relation chain id"]) -> str:
-    """Use relevant knowledge from relation chain"""
+    """Get MBTI/personality knowledge for this relation_chain to enrich persona and relationship context."""
     logger.info(f"useKnowledge Tool called with relation_chain_id: {relation_chain_id}")
     with session() as db:
         relation_chain = db.get(RelationChain, relation_chain_id)
@@ -56,7 +56,7 @@ async def handleIfToolCall(
     llm_with_tools: Runnable[LanguageModelInput, AIMessage],
     llm_response: AIMessage,
     max_tool_round: int = 3,
-) -> AIMessage:
+) -> tuple[AIMessage, list]:
     tool_map = {ta.tool.name: ta for ta in tools_and_args_handlers}
     tool_round = 0
 
@@ -109,4 +109,4 @@ async def handleIfToolCall(
         llm_response = await llm_with_tools.ainvoke(messages)
         tool_round += 1
 
-    return llm_response
+    return llm_response, messages

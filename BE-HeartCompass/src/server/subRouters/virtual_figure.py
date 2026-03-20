@@ -6,9 +6,9 @@ import os
 import time
 import logging
 
-from ..authentication import AuthHandler
-from ..services.user import userGetUserIdByAccessToken
-from ..services.virtual_figure import vfRecalculateContextBlock
+from src.server.authentication import AuthHandler
+from src.server.services.user import userGetUserIdByAccessToken
+from src.server.services.virtual_figure import vfRecalculateContextBlock
 from src.database.database import session
 from src.database.models import RelationChain
 from src.agent.graph.VirtualFigureGraph.graph import getVirtualFigureGraph
@@ -85,7 +85,7 @@ async def _processMessages(user_id: int, relation_chain_id: int, temp_messages: 
     session_start = time.perf_counter()
     logger.info(f"开始处理本批次消息：{temp_messages}")
 
-    graph = await getVirtualFigureGraph()
+    graph = getVirtualFigureGraph()
     short_term_memory_config = {"configurable": {"thread_id": str(relation_chain_id)}}
     state = initVirtualFigureGraphState(
         {
@@ -167,7 +167,8 @@ async def _handle(websocket: WebSocket) -> None:
                 data = await websocket.receive_json()
             except WebSocketDisconnect:
                 break
-            except Exception:
+            except Exception as e:
+                logger.error(f"Error receiving message: {e}")
                 await _sendError(websocket, relation_chain_id, "receive error")
                 continue
             if not isinstance(data, dict):
@@ -180,7 +181,8 @@ async def _handle(websocket: WebSocket) -> None:
                     websocket, relation_chain_id, "Please finish current session first"
                 )
                 continue
-
+            
+            logger.info(f"收到消息：{data.get("message")}")
             temp_messages.append(
                 {
                     "relation_chain_id": data_relation_chain_id,
