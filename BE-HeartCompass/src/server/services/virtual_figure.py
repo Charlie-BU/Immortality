@@ -11,6 +11,8 @@ from src.agent.graph.ContextGraph.state import (
 logger = logging.getLogger(__name__)
 
 
+# 重新计算关系与画像上下文
+# 建议narrative留空，只让纯粹的关系与画像落库，没有narrative相关事件等，避免VirtualGraph出现幻觉
 async def vfRecalculateContextBlock(
     user_id: int, relation_chain_id: int, narrative: str | None
 ):
@@ -53,7 +55,7 @@ async def vfRecalculateContextBlock(
 
     context_block = context.get("context_block")
     relevant_knowledge = context.get("relevant_knowledge")
-    
+
     with session() as db:
         relation_chain = db.get(RelationChain, int(relation_chain_id))
         if relation_chain is None:

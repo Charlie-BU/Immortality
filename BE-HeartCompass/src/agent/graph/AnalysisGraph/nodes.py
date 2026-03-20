@@ -108,6 +108,7 @@ async def nodeCallLLM(state: AnalysisGraphState) -> dict:
             llm_output["message"] = parsed.get("message") or ""
 
     # 把新一轮加入记忆
+    # todo：实际没有用到，每次invoke都是新的messages，不会有old的memory
     messages_in_memory = state.get("messages", [])
     messages_to_update_memory = []
     non_system_messages = []
