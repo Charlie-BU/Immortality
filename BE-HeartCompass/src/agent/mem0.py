@@ -21,7 +21,6 @@ def arkClient():
 
 async def checkJobStatus(event_id: str) -> dict:
     url = f"{os.getenv("MEM0_HOST")}/api/v1/job/{event_id}"
-    # url = f"{os.getenv("MEM0_HOST")}/api/v1/events"
     try:
         res = await fetch(
             url,
@@ -37,7 +36,12 @@ async def checkJobStatus(event_id: str) -> dict:
         return {}
 
 
-# async def addMemory()
+def addMemoryOnRelationChain(
+    relation_chain_id: int,
+    memory: str,
+):
+    client = arkClient()
+    ret = client.add(memory, user_id=str(relation_chain_id), async_mode=True)
 
 
 if __name__ == "__main__":
