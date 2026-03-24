@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import re
 import threading
 import time
 from typing import Any, List
@@ -13,6 +12,7 @@ from src.agent.graph.VirtualFigureGraph.state import (
 )
 from src.channels.lark.client import larkClient
 from src.channels.lark.composite_api.im.send_text import SendTextRequest, sendText
+from src.channels.lark.integration.menu import handleMenuCommand
 from src.database.database import session
 from src.database.models import RelationChain, User
 
@@ -30,26 +30,6 @@ _state_lock = threading.Lock()
 
 # 为了防止飞书 SDK 问题导致重复接受消息，暂存已接收的消息和接收时间戳
 _temp_received_messages_by_open_id: dict[str, list[tuple[str, int]]] = {}
-
-
-def getRelationChainId(open_id: str, crush_id: int) -> int | None:
-    with session() as db:
-        user = db.query(User).filter(User.lark_open_id == open_id).first()
-        if user is None:
-            logger.warning(f"open_id：{open_id} 未授权")
-            return None
-        user_id = user.id
-        relation_chain = (
-            db.query(RelationChain)
-            .filter(
-                RelationChain.user_id == user_id, RelationChain.crush_id == crush_id
-            )
-            .first()
-        )
-        if relation_chain is None:
-            logger.warning(f"不存在关系链")
-            return None
-        return relation_chain.id
 
 
 def getUserIdByOpenId(open_id: str) -> int | None:
@@ -228,28 +208,7 @@ def messageHandler(message: str, open_id: str) -> None:
 
     logger.info(f"收到：{message}")
 
-    # 判定是否为特殊指令
-    switch_relation_chain_match = re.fullmatch(r"/(\d+)", message)
-    # 切换关系链
-    if switch_relation_chain_match:
-        crush_id = int(switch_relation_chain_match.group(1))
-        relation_chain_id = getRelationChainId(open_id, crush_id)
-        if relation_chain_id is None:
-            sendText2OpenId(
-                open_id, f"【System】切换失败，未找到 crush_id={crush_id} 对应关系链"
-            )
-            return
-        # 切换关系链时清空旧缓冲，避免跨关系链混发
-        with _state_lock:
-            _active_relation_chain_by_open_id[open_id] = relation_chain_id
-            _pending_messages_by_open_id.pop(
-                open_id, None
-            )  # 删除_pending_messages_by_open_id中open_id的缓存
-            _cancelFlushTimerLocked(open_id)
-        logger.info(f"切换relation_chain成功，relation_chain_id：{relation_chain_id}")
-        sendText2OpenId(
-            open_id, f"【System】已切换 relation_chain_id={relation_chain_id}"
-        )
+    if handleMenuCommand(message, open_id):
         return
 
     user_id = getUserIdByOpenId(open_id)
