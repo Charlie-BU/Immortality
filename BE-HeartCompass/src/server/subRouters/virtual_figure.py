@@ -145,14 +145,12 @@ async def _handle(websocket: WebSocketAdapter) -> None:
     async def scheduleFlush():
         try:
             # step 1: 等待 WAITING_SECONDS_FOR_VIRTUAL_FIGURE 秒
-            # print("等待阶段")  # todo
             inactivity_task["status"] = "pending"
             await asyncio.sleep(int(os.getenv("WAITING_SECONDS_FOR_VIRTUAL_FIGURE")))
         except asyncio.CancelledError:
             return
         try:
             # step 2: 处理消息
-            # print("处理阶段")  # todo
             inactivity_task["status"] = "processing"
             messages_to_process.extend(temp_messages)
             temp_messages.clear()
@@ -201,7 +199,6 @@ async def _handle(websocket: WebSocketAdapter) -> None:
             # 若当前存在正在pending的定时任务，取消当前定时任务，重新开始倒计时
             # 注意：进入处理阶段不可取消，新消息放在清空后的temp_messages中
             if inactivity_task["task"] and inactivity_task["status"] == "pending":
-                # print("等待阶段：重新计时")  # todo
                 inactivity_task["task"].cancel()
                 try:
                     await inactivity_task["task"]
