@@ -1,5 +1,5 @@
 # 弃用，火山Mem0支持太差
-# update接口跑不通，add memory慢到令人发指的程度
+# update接口跑不通；add memory慢到令人发指的程度；v2 API不支持；文档啥也没有；oncall找不到人
 
 #  import os
 # import logging
