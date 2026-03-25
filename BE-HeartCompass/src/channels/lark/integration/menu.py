@@ -156,8 +156,8 @@ def clearCurrentRelationChain(open_id: str) -> None:
     _sendText2OpenId(open_id, "【System】已清除当前对话对象")
 
 
-def addContextByNarrative(open_id: str, narrative: str) -> None:
-    _sendText2OpenId(open_id, f"【System】通过自然语言添加上下文暂未实现：{narrative}")
+def addContextByNarrative(open_id: str, crush_id: int, narrative: str) -> None:
+    _sendText2OpenId(open_id, f"【System】通过自然语言添加上下文暂未实现：{crush_id} {narrative}")
 
 
 def addContextByScreenshot(
@@ -193,9 +193,9 @@ menu = [
     },
     # todo：提高优先级，通过单独agent操作落库
     {
-        "hint": "/add-context-by-narrative:\n<narrative>",
+        "hint": "/add-context-by-narrative:<person_id>\n<narrative>",
         "content": "通过自然语言添加上下文",
-        "regex": r"/add-context-by-narrative:\n(.*)",
+        "regex": r"/add-context-by-narrative:(\d+)\n(.*)",
         "command": addContextByNarrative,
     },
     # todo：降低优先级，很少需要
@@ -238,7 +238,7 @@ def handleMenuCommand(message: str, open_id: str) -> bool:
     if command == switchRelationChain:
         command(open_id, int(match.group(1)))
     elif command == addContextByNarrative:
-        command(open_id, match.group(1))
+        command(open_id, int(match.group(1)), match.group(2))
     elif command == addContextByScreenshot:
         command(open_id, match.group(1), match.group(2), match.group(3))
     elif command == flushContext:

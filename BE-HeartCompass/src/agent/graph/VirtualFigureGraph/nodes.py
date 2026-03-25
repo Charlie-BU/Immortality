@@ -222,11 +222,11 @@ async def nodeCallLLM(state: VirtualFigureGraphState) -> VirtualFigureGraphOutpu
         ),
         # 2. 关系与画像上下文
         SystemMessage(content=f"关系与画像上下文：\n{state['context_block']}"),
-        # 3. DB召回的长期记忆
+        # 3. DB召回的长期记忆（真实）
         SystemMessage(
             content=f"可能参考的召回的长期记忆：\n{state['recalled_facts_from_db']}"
         ),
-        # 4. Mem0召回的长期记忆
+        # 4. Viking召回的长期记忆（不可信）
         SystemMessage(
             content=f"可能参考的召回的长期记忆：\n{json.dumps(state['recalled_facts_from_mem0'], ensure_ascii=False)}"
         ),
