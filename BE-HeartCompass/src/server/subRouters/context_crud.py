@@ -8,11 +8,14 @@ from src.server.services.context_crud import (
     ccDeleteEvent,
     ccGetEventById,
     ccGetEventsByRelationChainId,
+    ccCreateCrush,
+    ccCreateRelationChain,
 )
 from src.database.database import session
+from src.database.enums import UserGender, RelationStage, MBTI
 
 
-context_crud_router = SubRouter(__file__, prefix="/context")
+context_crud_router = SubRouter(__file__, prefix="/context-crud")
 
 
 # 全局异常处理
@@ -59,3 +62,38 @@ async def getEventsByRelationChainId(request: Request):
             current_page=int(current_page),
         )
     return res
+
+
+@context_crud_router.post("/createCrush", auth_required=True)
+async def createCrush(request: Request):
+    body = request.json()
+    user_id = userGetUserIdByAccessToken(request)
+    crush_name = body["name"]
+    gender = UserGender(body["gender"])
+    mbti = MBTI(body["mbti"])
+
+    with session() as db:
+        res = await ccCreateCrush(
+            db=db,
+            user_id=user_id,
+            crush_name=crush_name,
+            gender=gender,
+            mbti=mbti,
+        )
+        return res
+
+
+@context_crud_router.post("/createRelationChain", auth_required=True)
+async def createRelationChain(request: Request):
+    body = request.json()
+    user_id = userGetUserIdByAccessToken(request)
+    crush_id = body["crush_id"]
+    stage = RelationStage(body["stage"])
+    with session() as db:
+        res = await ccCreateRelationChain(
+            db=db,
+            user_id=user_id,
+            crush_id=crush_id,
+            stage=stage,
+        )
+        return res

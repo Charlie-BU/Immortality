@@ -124,6 +124,12 @@ class Crush(Base, SerializableMixin):
     __tablename__ = "crush"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+
+    creator_id = Column(
+        Integer, ForeignKey("user.id"), nullable=False, comment="创建用户ID"
+    )
+    creator = relationship("User", backref="created_crushes")
+
     name = Column(String(64), nullable=False, comment="Crush 姓名")
     gender = Column(Enum(UserGender), nullable=False, comment="Crush 性别")
     mbti = Column(Enum(MBTI), nullable=True, comment="Crush MBTI 类型")
