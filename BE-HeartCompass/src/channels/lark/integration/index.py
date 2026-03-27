@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import re
 import threading
 import time
 from typing import Any, List
@@ -13,6 +12,7 @@ from src.agent.graph.VirtualFigureGraph.state import (
 )
 from src.channels.lark.client import larkClient
 from src.channels.lark.composite_api.im.send_text import SendTextRequest, sendText
+from src.channels.lark.integration.menu import handleMenuCommand
 from src.database.database import session
 from src.database.models import RelationChain, User
 
@@ -30,26 +30,6 @@ _state_lock = threading.Lock()
 
 # 为了防止飞书 SDK 问题导致重复接受消息，暂存已接收的消息和接收时间戳
 _temp_received_messages_by_open_id: dict[str, list[tuple[str, int]]] = {}
-
-
-def getRelationChainId(open_id: str, crush_id: int) -> int | None:
-    with session() as db:
-        user = db.query(User).filter(User.lark_open_id == open_id).first()
-        if user is None:
-            logger.warning(f"open_id：{open_id} 未授权")
-            return None
-        user_id = user.id
-        relation_chain = (
-            db.query(RelationChain)
-            .filter(
-                RelationChain.user_id == user_id, RelationChain.crush_id == crush_id
-            )
-            .first()
-        )
-        if relation_chain is None:
-            logger.warning(f"不存在关系链")
-            return None
-        return relation_chain.id
 
 
 def getUserIdByOpenId(open_id: str) -> int | None:
@@ -149,14 +129,16 @@ def _sendBatchMessages(open_id: str) -> None:
     with _state_lock:
         relation_chain_id = _active_relation_chain_by_open_id.get(open_id)
     if relation_chain_id is None:
-        sendText2OpenId(open_id, "【System】请先发送 /<crush_id> 切换关系链，例如 /12")
+        sendText2OpenId(
+            open_id, "【System】请先通过 /<crush_id> 切换当前对话对象，例如 /1"
+        )
         return
 
     if not relationChainBelongsToUser(user_id, relation_chain_id):
         with _state_lock:
             _active_relation_chain_by_open_id.pop(open_id, None)
         sendText2OpenId(
-            open_id, "【System】当前关系链不可用，请重新发送 /<crush_id> 切换"
+            open_id, "【System】当前对话对象不可用，请重新发送 /<crush_id> 切换"
         )
         return
 
@@ -173,7 +155,6 @@ def _sendBatchMessages(open_id: str) -> None:
         sendText2OpenId(open_id, "【System】消息处理失败，请稍后重试")
         return
 
-    logger.info(f"\n思考内容：{reasoning_content}\n")
     for item in messages_to_send:
         text = normalizeReply(item)
         if text is not None:
@@ -196,7 +177,9 @@ def _scheduleFlush(open_id: str) -> None:
 # 过滤重复消息
 def filterDuplicatedMessage(message: str, open_id: str) -> bool:
     current_time = int(time.time())
-    second_threshold = 30  # 30秒内完全相同消息视为重复
+    second_threshold = (
+        10 if message.startswith("/") else 30
+    )  # 30秒内完全相同消息视为重复，菜单命令10秒内视为重复
     is_duplicate = False
 
     with _state_lock:
@@ -228,28 +211,7 @@ def messageHandler(message: str, open_id: str) -> None:
 
     logger.info(f"收到：{message}")
 
-    # 判定是否为特殊指令
-    switch_relation_chain_match = re.fullmatch(r"/(\d+)", message)
-    # 切换关系链
-    if switch_relation_chain_match:
-        crush_id = int(switch_relation_chain_match.group(1))
-        relation_chain_id = getRelationChainId(open_id, crush_id)
-        if relation_chain_id is None:
-            sendText2OpenId(
-                open_id, f"【System】切换失败，未找到 crush_id={crush_id} 对应关系链"
-            )
-            return
-        # 切换关系链时清空旧缓冲，避免跨关系链混发
-        with _state_lock:
-            _active_relation_chain_by_open_id[open_id] = relation_chain_id
-            _pending_messages_by_open_id.pop(
-                open_id, None
-            )  # 删除_pending_messages_by_open_id中open_id的缓存
-            _cancelFlushTimerLocked(open_id)
-        logger.info(f"切换relation_chain成功，relation_chain_id：{relation_chain_id}")
-        sendText2OpenId(
-            open_id, f"【System】已切换 relation_chain_id={relation_chain_id}"
-        )
+    if handleMenuCommand(message, open_id):
         return
 
     user_id = getUserIdByOpenId(open_id)
@@ -259,14 +221,16 @@ def messageHandler(message: str, open_id: str) -> None:
 
     relation_chain_id = _active_relation_chain_by_open_id.get(open_id)
     if relation_chain_id is None:
-        sendText2OpenId(open_id, "【System】请先发送 /<crush_id> 切换关系链，例如 /12")
+        sendText2OpenId(
+            open_id, "【System】请先通过 /<crush_id> 切换当前对话对象，例如 /1"
+        )
         return
 
     if not relationChainBelongsToUser(user_id, relation_chain_id):
         with _state_lock:
             _active_relation_chain_by_open_id.pop(open_id, None)
         sendText2OpenId(
-            open_id, "【System】当前关系链不可用，请重新发送 /<crush_id> 切换"
+            open_id, "【System】当前对话对象不可用，请重新发送 /<crush_id> 切换"
         )
         return
 

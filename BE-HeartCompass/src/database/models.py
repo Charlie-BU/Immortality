@@ -460,7 +460,7 @@ class InteractionSignal(Base, SerializableMixin):
         return f"<InteractionSignal {self.id}>"
 
 
-# ---- 推断/洞察（Crush信息、事件和聊天话题综合推断） ----
+# ---- 推断/洞察（Crush信息、事件和聊天话题综合推断）（暂未启用） ----
 class DerivedInsight(Base, SerializableMixin):
     __tablename__ = "derived_insight"
 

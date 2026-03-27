@@ -5,7 +5,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, HumanMessage
 
 from src.agent.ark import arkClient
-from src.agent.adapter import langchain2ArkResponsesMessages
+from src.agent.adapter import langchain2OpenAIChatMessages
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +32,10 @@ def prepareLLM(
     logger.info(f"LLM prepared")
 
     model_name = os.getenv(model, "")
-    api_key = os.getenv("ENDPOINT_API_KEY", "")
+    api_key = os.getenv("ARK_API_KEY", "")
     assert (
         model_name and api_key
-    ), f"required '{model}' and 'ENDPOINT_API_KEY' for AI Agent!!!"
+    ), f"required '{model}' and 'ARK_API_KEY' for AI Agent!!!"
 
     model_args = {
         "model": model_name,
@@ -79,14 +79,16 @@ async def arkAinvoke(
 ) -> ArkLLMResponse:
     model_name = os.getenv(model, "")
     assert model_name, f"required '{model}' for AI Agent!!!"
-    
+
     # 全局单例
     _ark_client = arkClient()
 
     reasoning_effort = model_options.get("reasoning_effort", None)
     resp = await _ark_client.responses.create(
         model=model_name,
-        input=langchain2ArkResponsesMessages(messages),
+        input=langchain2OpenAIChatMessages(
+            messages=messages, is_ark_responses_messages=True
+        ),
         temperature=model_options.get("temperature", None),
         max_output_tokens=model_options.get("max_tokens", None),
         reasoning=(

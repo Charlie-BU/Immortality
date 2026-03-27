@@ -27,7 +27,7 @@ async def nodeInitState(state: VirtualFigureGraphState) -> dict:
     context_block = state.get("context_block", "")
     words_to_user = state.get("words_to_user", "")
     recalled_facts_from_db = state.get("recalled_facts_from_db", "")
-    recalled_facts_from_mem0 = state.get("recalled_facts_from_mem0", [])
+    recalled_facts_from_viking = state.get("recalled_facts_from_viking", [])
     llm_output = state.get(
         "llm_output",
         {"messages_to_send": [], "reasoning_content": ""},
@@ -37,7 +37,7 @@ async def nodeInitState(state: VirtualFigureGraphState) -> dict:
         "context_block": context_block,
         "words_to_user": words_to_user,
         "recalled_facts_from_db": recalled_facts_from_db,
-        "recalled_facts_from_mem0": recalled_facts_from_mem0,
+        "recalled_facts_from_viking": recalled_facts_from_viking,
         "llm_output": llm_output,
     }
 
@@ -52,6 +52,7 @@ async def nodeLoadPersona(state: VirtualFigureGraphState) -> dict:
         relation_chain = db.get(RelationChain, int(relation_chain_id))
         context_block = relation_chain.context_block
         if context_block is None or context_block == "":
+            # 若当前关系链无context_block，先计算后写入
             try:
                 res = await vfRecalculateContextBlock(
                     user_id,
@@ -178,13 +179,13 @@ async def nodeRecallFromDB(state: VirtualFigureGraphState) -> dict:
     }
 
 
-# todo：接入方舟Mem0
-async def nodeRecallFromMem0(state: VirtualFigureGraphState) -> dict:
-    logger.info("nodeRecallFromMem0 is called")
+# todo：接入火山Viking记忆库
+async def nodeRecallFromViking(state: VirtualFigureGraphState) -> dict:
+    logger.info("nodeRecallFromViking is called")
 
-    state["recalled_facts_from_mem0"] = []
+    state["recalled_facts_from_viking"] = []
     return {
-        "recalled_facts_from_mem0": state["recalled_facts_from_mem0"],
+        "recalled_facts_from_viking": state["recalled_facts_from_viking"],
     }
 
 
@@ -196,8 +197,6 @@ async def nodeBuildMessage(state: VirtualFigureGraphState) -> dict:
     reply_prompt = "\n".join(messages_received_parsed)
 
     state["messages"].append(HumanMessage(content=reply_prompt or ""))
-    # todo: 调试，上线删
-    print(f"当前短期记忆：\n{state['messages']}\n\n")
     return {
         "messages": state["messages"],
     }
@@ -223,13 +222,13 @@ async def nodeCallLLM(state: VirtualFigureGraphState) -> VirtualFigureGraphOutpu
         ),
         # 2. 关系与画像上下文
         SystemMessage(content=f"关系与画像上下文：\n{state['context_block']}"),
-        # 3. DB召回的长期记忆
+        # 3. DB召回的长期记忆（真实）
         SystemMessage(
             content=f"可能参考的召回的长期记忆：\n{state['recalled_facts_from_db']}"
         ),
-        # 4. Mem0召回的长期记忆
+        # 4. Viking召回的长期记忆（不可信）
         SystemMessage(
-            content=f"可能参考的召回的长期记忆：\n{json.dumps(state['recalled_facts_from_mem0'], ensure_ascii=False)}"
+            content=f"可能参考的召回的长期记忆：\n{json.dumps(state['recalled_facts_from_viking'], ensure_ascii=False)}"
         ),
     ] + state["messages"]
 
@@ -274,6 +273,9 @@ async def nodeCallLLM(state: VirtualFigureGraphState) -> VirtualFigureGraphOutpu
 
     # parse成功写入short-term memory
     state["messages"].append(ai_message)
+
+    # todo: 调试，线上删
+    logger.info(f"\n当前state：\n{state}\n\n")
 
     return {
         "llm_output": state["llm_output"],
