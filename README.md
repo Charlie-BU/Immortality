@@ -997,7 +997,7 @@ agent = create_agent(
 agent.invoke(messages)
 ```
 
-### TENTH ENTRY - 2026.03.24-27
+### TENTH ENTRY - 2026.03.24-28
 
 #### VirtualFigureGraph 重构
 
@@ -1063,7 +1063,9 @@ graph.add_edge(
 graph.add_edge("nodeCallLLM", END)
 ```
 
-!(可视化 VirtualFigureGraph)[https://charlie-assets.oss-rg-china-mainland.aliyuncs.com/images/article/image_ef2b0b63b1.png?x-oss-process=image/resize,w_1000]
+![可视化 VirtualFigureGraph](https://charlie-assets.oss-rg-china-mainland.aliyuncs.com/images/article/image_ef2b0b63b1.png?x-oss-process=image/resize,w_1000)
+
+##### VirtualFigureGraph 上下文设计
 
 在 VirtualFigureGraph 中，模型输入的上下文分为5个部分：
 
@@ -1366,13 +1368,81 @@ event_handler = (
 )
 ```
 
-`messageHandler()`依旧采用**15s缓冲——批量处理——分条返回**的策略。另外需要说明的是，用户和飞书机器人的鉴权。
-
-飞书大致有三类id对用户的身份进行标识：
+`messageHandler()`依旧采用**15s缓冲——批量处理——分条返回**的策略。接下来就是通过WebSocketServer向用户推送消息。值得注意的是，飞书SDK向用户推送消息需要一个id对用户进行标识。大致有以下三类id：
 
 ![三类用户标识id](https://charlie-assets.oss-rg-china-mainland.aliyuncs.com/images/article/image_42d6a4afe3.png?x-oss-process=image/resize,w_800)
 
-我们这里采用open_id标识用户身份。
+我们这里采用open_id标识用户身份。我在数据库User表新开了一个字段`lark_open_id`，将本系统的用户和飞书绑定。至于如何获取open_id，可以参考[如何获取用户的 Open ID](https://open.larkoffice.com/document/faq/trouble-shooting/how-to-obtain-openid)。
 
+后续会通过用户在HeartCompass中的手机号或者邮箱获取open_id来绑定飞书。这就要求用户在本系统中的手机号或者邮箱和飞书账号保持一致。
+
+::: warning
+这个链路和之前开发微信小程序时微信登录的鉴权颇有几分神似，回旋镖🪃！当时还专门写了一篇文档，详见 [微信小程序调用微信登录接口实现登录和鉴权的方案](https://charliebu.cn/articles/NzI4NzpDaGFybGllJ3NBcnRpY2xlczoxNzc0NzAxNzM4MjMy)。
+:::
+
+##### Menu 设计
+
+在 OpenClaw 中，用户可以通过发送特殊的指令进行对话之外的操作，如`/new`指令用来开启新的对话session。受其启发，我们既然抛弃了前端，那自然也需要留一个接口让用户进行除了对话之外的操作和配置。于是我设计了Menu，包含了一系列`/`开头的指令，如下：
+
+```python
+menu = [
+    {
+        "hint": "/list_available_persons",
+        "content": "查找可选对话对象 person_id",
+        "regex": r"/list_available_persons",
+        "command": listAvailablePersons,
+    },
+    {
+        "hint": "/<person_id>",
+        "content": "切换当前对话对象",
+        "regex": r"/(\d+)",
+        "command": switchRelationChain,
+    },
+    {
+        "hint": "/clear_current_person",
+        "content": "清除当前对话对象",
+        "regex": r"/clear_current_person",
+        "command": clearCurrentRelationChain,
+    },
+    # todo：提高优先级，通过单独agent操作落库
+    {
+        "hint": "/add-context-by-narrative:<person_id>\n<narrative>",
+        "content": "通过自然语言添加上下文",
+        "regex": r"/add-context-by-narrative:(\d+)\n(.*)",
+        "command": addContextByNarrative,
+    },
+    # todo：降低优先级，很少需要
+    {
+        "hint": "/add-context-by-screenshot:\n<screenshot>\n<additional_context>\n<his_name_or_position_on_screenshot>",
+        "content": "通过聊天记录截图添加上下文",
+        "regex": r"/add-context-by-screenshot:\n(.*)\n(.*)\n(.*)",
+        "command": addContextByScreenshot,
+    },
+    {
+        "hint": "/flush-context:<person_id>",
+        "content": "刷新关系与画像上下文（添加上下文后请刷新）",
+        "regex": r"/flush-context:(\d+)",
+        "command": flushContext,
+    },
+    {
+        "hint": "/menu",
+        "content": "显示菜单",
+        "regex": r"/menu",
+        "command": showMenu,
+    },
+]
+```
+
+`messageHandler()`收到用户消息后，先通过正则判断是否是已有的指令，提取规定的参数。然后直接绕过VirtualFigureGraph链路，直接触发对应的command函数。
 
 #### 接下来的 TODOs
+
+首先请观赏下到目前为止的成果：
+
+![Demo](https://charlie-assets.oss-rg-china-mainland.aliyuncs.com/images/article/20260327004123_rec__741092ca7b.gif)
+
+从现在VirtualFigureGraph的架构来讲，我把上下文分成5个部分（详见前文 VirtualFigureGraph 上下文设计）。在记忆部分，数据库中存放的是用户根据当前人物的 & 这段关系中的事实填充的**可信的**上下文；而仅仅有真实的可信上下文显然不足。在用户和虚拟人对话过程中，形成的非真实（不是现实中）的记忆也是重要的。否则虚拟人就会像傻子一样对前面对话的内容一无所知......
+
+这些**不可信**的记忆我希望按照两种途径进入上下文 —— 一种LangChain官方支持的短期记忆存储checkpoint（只包含双方的对话记录，HumanMessage和AIMessage）在内存`InMemorySaver()`，这些短期记忆自然会在进程重启后丢失，进程不重启也会大量慢慢膨胀，容易塞满上下文窗口，所以需要不时trim；另种是将两人的对话传入远端记忆库，经过总结、提炼，形成长期记忆落库。
+
+对于远端记忆库，一开始我看到刚刚推出的火山Mem0记忆库，认定是个不错的选择。
