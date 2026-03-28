@@ -1,7 +1,8 @@
 import logging
 from sqlalchemy.orm import Session
 
-from src.database.models import RelationChain, Event
+from src.database.enums import UserGender, RelationStage, MBTI
+from src.database.models import RelationChain, Event, Crush, User
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,35 @@ async def ccDeleteEvent(db: Session, user_id: int, event_id: int) -> dict:
         return {
             "status": -4,
             "message": "Error deleting event",
+        }
+
+
+async def ccHardDeleteEvent(db: Session, user_id: int, event_id: int) -> dict:
+    try:
+        event = db.get(Event, event_id)
+        if not event:
+            return {
+                "status": -1,
+                "message": "Event not found",
+            }
+        if event.relation_chain.user_id != user_id:
+            return {
+                "status": -2,
+                "message": "You are not authorized to delete this event",
+            }
+
+        db.delete(event)
+        db.commit()
+        return {
+            "status": 200,
+            "message": "Event hard deleted",
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error hard deleting event {event_id}: {e}")
+        return {
+            "status": -4,
+            "message": "Error hard deleting event",
         }
 
 
@@ -89,3 +119,64 @@ async def ccGetEventsByRelationChainId(
         "total": query.count(),
         "events": [event.toJson() for event in events],
     }
+
+
+async def ccCreateCrush(
+    db: Session,
+    user_id: int,
+    crush_name: str,
+    gender: UserGender,
+    mbti: MBTI,
+) -> dict:
+    try:
+        new_crush = Crush(
+            creator_id=user_id,
+            name=crush_name,
+            gender=gender,
+            mbti=mbti,
+        )
+        db.add(new_crush)
+        db.commit()
+        return {
+            "status": 200,
+            "message": "Crush created",
+        }
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to create crush for user {user_id}: {e}")
+        return {"status": -1, "message": "Internal Database Error"}
+
+
+async def ccCreateRelationChain(
+    db: Session, user_id: int, crush_id: int, stage: RelationStage
+) -> dict:
+    try:
+        crush = db.get(Crush, crush_id)
+        if not crush:
+            return {"status": -1, "message": "Crush not found"}
+
+        existing_chain_lenth = (
+            db.query(RelationChain).filter(RelationChain.crush_id == crush_id).count()
+        )
+        if existing_chain_lenth > 0:
+            return {"status": -2, "message": "Crush ID conflict: already bound"}
+        new_relation_chain = RelationChain(
+            user_id=user_id,
+            crush_id=crush_id,
+            current_stage=stage,
+            is_active=True,
+        )
+        db.add(new_relation_chain)
+        db.commit()
+        return {
+            "status": 200,
+            "message": "Relation chain created",
+        }
+
+    except Exception as e:
+        db.rollback()
+        logger.error(
+            f"Failed to create relation for user {user_id} and crush {crush_id}: {e}"
+        )
+        return {"status": -3, "message": "Internal Database Error"}
