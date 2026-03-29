@@ -71,13 +71,13 @@ class RelationStage(enum.Enum):
 ### THIRD ENTRY - 2026.02.23
 
 我阅读了 langchain 部分文档，我得到了一些理解：
-首先，短期记忆就是指在同一 thread（相同 thread_id 才会加载同一份记忆）范围内用户与 LLM 先前的交互内容，包括 HumanMessage, AiMessage 和 ToolMessage 和一些相关信息。在 langchain 中可以通过 langgraph checkpoint 的方式保存每次回话的 messages 快照（或自定义的额外字段）在 AgentState 中，记录在内存 `InMemorySaver ()`（LangGraph 的 checkpoint 保存器）或数据库支持的 checkpointer 中。进入新的回话时 agent 就可以保持对先前交互的记忆。
+首先，短期记忆就是指在同一 thread（相同 thread_id 才会加载同一份记忆）范围内用户与 LLM 先前的交互内容，包括 HumanMessage, AiMessage 和 ToolMessage 和一些相关信息。在 langchain 中可以通过 langgraph checkpoint 的方式保存每次回话的 messages 快照（或自定义的额外字段）在 AgentState 中，记录在内存 `InMemorySaver()`（LangGraph 的 checkpoint 保存器）或数据库支持的 checkpointer 中。进入新的回话时 agent 就可以保持对先前交互的记忆。
 但 LLM 的上下文窗口有限，对于长对话过多的记忆可能超出其上下文窗口，所以需要设计记忆遗忘或压缩策略。常见策略包括：
 
 - trim messages（裁剪最早/近 N 条）
 - delete messages（规则删除）
 - summarize messages（总结压缩）
-  另外，长期记忆通常有两种形态：一种是基于 langgraph 的内存存储 `store = InMemoryStore ()`（一个轻量 KV 容器）把需要长期记忆的信息结构化组织，通过 tool 来读取返回给 agent，InMemoryStore 在 creat_agent 时作为 store 参数传入，可在 tool 中作为 runtime 读取/更新。但通过 InMemoryStore 进行记忆存储一方面依赖于内存，一方面生命周期和 agent 绑定，不适合在生产环境使用。而在生产环境中可以将 tool 直连外部数据库，返回所需内容直接提供给 agent。另一种是向量检索型的长期记忆，即 RAG。通过【用户输入 → embedding → vector search → 取回相关记忆 → 拼接给 LLM】的链路实现记忆。
+  另外，长期记忆通常有两种形态：一种是基于 langgraph 的内存存储 `store = InMemoryStore()`（一个轻量 KV 容器）把需要长期记忆的信息结构化组织，通过 tool 来读取返回给 agent，InMemoryStore 在 creat_agent 时作为 store 参数传入，可在 tool 中作为 runtime 读取/更新。但通过 InMemoryStore 进行记忆存储一方面依赖于内存，一方面生命周期和 agent 绑定，不适合在生产环境使用。而在生产环境中可以将 tool 直连外部数据库，返回所需内容直接提供给 agent。另一种是向量检索型的长期记忆，即 RAG。通过【用户输入 → embedding → vector search → 取回相关记忆 → 拼接给 LLM】的链路实现记忆。
   对于生产环境，一种可能的技术选型：
 - InMemorySaver → PostgreSaver
 - InMemoryStore → PostgreSQL 数据库
@@ -627,7 +627,7 @@ agent/graph 目录中，以 graph 种类组织工程结构。
 - 按距离升序（越小越相似）
 - 候选数限制：`limit (int (os.getenv("VECTOR_CANDIDATES")))`
   每条候选会根据 `embedding.type` 分支读取关联对象并抽取：-**公共输出字段**：
-    - `data`：对应实体的 `toJson ()` 结果
+    - `data`：对应实体的 `toJson()` 结果
     - `weight`：对应实体权重，默认 `1.0`
     - `created_at`：仅部分类型参与时间衰减
       **分支规则**：
@@ -872,7 +872,7 @@ Get MBTI/personality knowledge for this relation_chain to enrich persona and rel
 
 于是我设计了一个`ToolAndItsArgsHandler`，存放tool本身和处理其参数的回调函数`args_handler`。
 
-另外我单独封装了`handleIfToolCall ()`方法，这样在graph node中一旦需要引入tool call就可以方便复用：
+另外我单独封装了`handleIfToolCall()`方法，这样在graph node中一旦需要引入tool call就可以方便复用：
 
 ```python
 class ToolAndItsArgsHandler:
@@ -1441,8 +1441,29 @@ menu = [
 
 ![Demo](https://charlie-assets.oss-rg-china-mainland.aliyuncs.com/images/article/20260327004123_rec__741092ca7b.gif)
 
+##### Viking 记忆库接入
+
 从现在VirtualFigureGraph的架构来讲，我把上下文分成5个部分（详见前文 VirtualFigureGraph 上下文设计）。在记忆部分，数据库中存放的是用户根据当前人物的 & 这段关系中的事实填充的**可信的**上下文；而仅仅有真实的可信上下文显然不足。在用户和虚拟人对话过程中，形成的非真实（不是现实中）的记忆也是重要的。否则虚拟人就会像傻子一样对前面对话的内容一无所知......
 
-这些**不可信**的记忆我希望按照两种途径进入上下文 —— 一种LangChain官方支持的短期记忆存储checkpoint（只包含双方的对话记录，HumanMessage和AIMessage）在内存`InMemorySaver()`，这些短期记忆自然会在进程重启后丢失，进程不重启也会大量慢慢膨胀，容易塞满上下文窗口，所以需要不时trim；另种是将两人的对话传入远端记忆库，经过总结、提炼，形成长期记忆落库。
+这些**不可信**的记忆我希望按照两种途径进入上下文 —— 一种LangChain官方支持的短期记忆存储checkpoint（只包含双方的对话记录，HumanMessage和AIMessage）在内存`InMemorySaver()`，这些短期记忆自然会在进程重启后丢失，进程不重启也会大量慢慢膨胀，容易塞满上下文窗口，所以需要不时 trim；另种是将两人的对话传入远端记忆库，经过总结、提炼，形成长期记忆落库。
 
-对于远端记忆库，一开始我看到刚刚推出的火山Mem0记忆库，认定是个不错的选择。
+对于远端记忆库，一开始我看到刚刚推出的火山 Mem0 记忆库，认定是个不错的选择。但尝试接入过程中经历了非常多的槽点：update接口跑不通、add memory慢到令人发指的程度、Mem0 v2 API不支持、文档啥也没有......于是果断放弃，准备使用火山一直在维护的相对成熟的Viking记忆库。
+
+##### 上下文写入方式重构 & MarkDown动态写入
+
+在 OpenClaw 中，用户和Claw对话时，一些重要的信息一旦被Claw捕捉到，就会在workspace的诸多markdown文件中动态写入，再后续读到这些文件从而“记住”。与它不同，我们的记忆是存在结构化的数据库中的，但这种动态写入的策略实在是值得借鉴。结构化的字段之外，我们在一些表中有类似的“补充信息”的字段，例如`other_info`和`additional_info`。这些字段在设计之初时都设定为`MutableList.as_mutable(ARRAY(JSONB))`的json数组类型，本意是想按照键值对的方式语义化地存储补充的信息。但考虑OpenClaw的设计，既然是要给模型读，markdown格式的文本应当再适合不过。
+
+在新设计中，我们需要完全重构现有的上下文写入方式。现在用户有两种方式写入上下文 —— 自然语言叙述，经过模型抽取用户画像和事件event后落库；以及聊天记录截图，经过模型抽取用户画像和聊天话题chat_topic后落库。设计之初没有发觉，这样的方式是极为生硬而灵活性性差的。更重要的是，现有逻辑只能增加新的记录，不能修改已有的不完善 / 有误的记忆。这是完全不符合预期的。
+
+依旧参考OpenClaw，我希望设计一个Super Agent专门用来补充 / 修改上下文。用户通过特定的指令从对话模式进入Context Agent模式，直接和agent对话来通过自然语言指导agent写入上下文。对于agent侧，我们需要在每次写入前，先读取原有的字段 / 文本内容，进而在原有内容基础上做整体修改。我理解这样的写入方式是可以称得上最佳实践。
+
+同时，我们需要完成上下文相关的每张表的CRUD API，并进行Tool化。之后封装在单独的Skill中，指导agent进行落库。
+
+极其重要的一点是，在agent根据skill进行tool call落库之前，**必须**触发一次interrupt（Human-in-the-loop），让用户手动确认。所有的落库操作都是高危操作，绝不能全权交给agent完成。
+
+##### 其他
+
+其余就剩一些小优化了：
+
+- 短期记忆 trim
+- 飞书bot中System消息用卡片发送
