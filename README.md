@@ -88,9 +88,10 @@ class RelationStage(enum.Enum):
   回到本项目当前预期实现的功能 getIntelligentReply，我认为短期记忆在此处没有丝毫用处 —— 我并不是要做一个 chatbot 给用户使用，所以自然不涉及"历史对话"此类信息需要作为短期记忆。而长期记忆正是我所需要的。我已经建立了上面提及的非常详细的数据模型，其中 Crush, Event, ChatLog, InteractionSignal, DerivedInsight, ContextEmbedding, Knowledge 将被分别被作为不同的上下文部分结构化地传递给 agent。
   我目前有一种 maybe 可行的技术方案：
   对于 getIntelligentReply 功能，可以定制化设计针对实现它功能的 skills，并明确工作流编排，对于每个节点，都设计对应的 tool 来实现功能并返回。例如：
-  ::: warning
-  用户输入和对方聊天的部分最近上下文 → 通过当前用户获取当前 User 信息 → 根据 User 信息获取他当前处于的 RelationChain 以及关系链中的对方信息，结构化封装对方相关信息作为 context 的一部分 → 根据对方的 mbti 从 knowledge 中向量化检索相关条目，作为 context 的一部分 → 基于聊天的上下文从 ContextEmbedding 向量表中分别召回相关 event、chat_log、derived_insight 和 knowledge 条目，分别合理排序后结构化封装为 context 的一部分 → …(其他所需 context) → context 和当前功能的 prompt 一并传给 agent 等待回复
-  :::
+
+::: warning
+用户输入和对方聊天的部分最近上下文 → 通过当前用户获取当前 User 信息 → 根据 User 信息获取他当前处于的 RelationChain 以及关系链中的对方信息，结构化封装对方相关信息作为 context 的一部分 → 根据对方的 mbti 从 knowledge 中向量化检索相关条目，作为 context 的一部分 → 基于聊天的上下文从 ContextEmbedding 向量表中分别召回相关 event、chat_log、derived_insight 和 knowledge 条目，分别合理排序后结构化封装为 context 的一部分 → …(其他所需 context) → context 和当前功能的 prompt 一并传给 agent 等待回复
+:::
 
 ## FOURTH ENTRY - 2026.02.25
 
@@ -188,6 +189,7 @@ prompt：
 ## SIXTH ENTRY - 2026.03.04
 
 最近几天一直埋头于开发工作，没顾得上写复盘。自上次数据模型重构后，到昨天为止，总算完成了 StateGraph 的全部链路。我把 `/getIntelligentReply` 改名为 `/conversationAnalysis`。通过一系列 node 完成了一条线性的 graph workflow。
+
 ::: warning
 **用户输入**：聊天记录截图、补充上下文 additional_context
 **经过节点**：nodeLoadEntity → nodeBuildCrushProfileContext → nodeBuildRecallQueries → nodeRecallKnowledge → nodeRecallNonKnowledge → nodeGetInteractionSignal → nodeOrganizeContext → nodeFetchPrompt → nodeCallLLM → nodeOutput
@@ -496,13 +498,15 @@ async def continuousAnalysis(request: Request):
 > 但这样不行啊！如果每次把执行的全部 state 作为 history_state 包一层加到上下文，history_state 无限嵌套 token 会爆炸的；如果只把 state 中必要的三项（见上文：request、context_block 和 llm_output）加到 history_state，history_state 没有了嵌套结构，history_state 只能保留上一次执行的 state，两次前的 state 就被覆盖了。
 > 我需要重新评估这个需求是否合理，另外使用短期记忆 checkpoint 来实现是否合理。
 > 另外，我决定后续的主要人力投入到虚拟人的开发中，不再硬搞分析建议这一套了。有了人物画像，虚拟人的开发应该问题不大。
-> ::: primary
-> 后续 TODOs：
+
+::: primary
+后续 TODOs：
 
 - 添加上下文的原始数据（截图、自然语言叙述）留存
 - Crush 表补充字段自己和对方的说话习惯，另开字段存储典型的说话语气 ✅
 - 重新评估 short-term memory ✅
-  :::
+
+:::
 
 ## EIGHTH ENTRY - 2026.03.14
 
@@ -525,6 +529,7 @@ async def continuousAnalysis(request: Request):
 #### Websocket
 
 为了实现更真实的对话流，我不再采用 LLM 普遍的一问一答的形式，不再通过 SSE 向客户端推送消息。我建立了 Websocket 双向通信，遵守以下策略：
+
 ::: primary
 用户发信息后，计时器倒计时 WAITING_SECONDS_FOR_VIRTUAL_FIGURE 秒（暂定 15s）。若倒计时未结束时用户继续发消息，计时器重置。直到计时器结束（一个完整的 WAITING_SECONDS_FOR_VIRTUAL_FIGURE 秒用户没有发消息），将本轮次用户发送的全部消息按顺序打包后一并交由 VirtualFigureGraph 处理。处理后 Agent 生成若干条回复消息。每条消息随机间隔 0.8～2.2s 向客户端推送。
 :::
@@ -586,6 +591,7 @@ call LLM
 #### 本周的新认知与本项目的思考
 
 这周很偶然地接触到去年字节爆火的一个开源产品 DeerFlow，使用 LangStack 以 Multi-Agent 架构搭建的 Deep Research Agent。这个工程的建设很大程度上采用了 LangChain/LangGraph 的最佳实践，比如 state、node 的设计；以及很多 Agent 开发相关技术、架构，例如 Meta Prompt、Supervisor 架构、Handoffs 模式...... 都非常值得借鉴。回看 HeartCompass 中架构和链路的设计，果然有非常多的缺陷和优化点。因此我决定基于这些新的认知和 ChatGPT 一同完成 HeartCompass 的优化工作。
+
 ::: primary
 后续 TODOs：
 
@@ -601,7 +607,8 @@ call LLM
 - 添加关系与画像上下文的原始数据（截图、自然语言叙述）留存
 - 探索新的关系与画像上下文补充方式，完成对应 API
 - 引入 LangGraph Studio 调试：`uvx --refresh --from"langgraph-cli [inmem]"--with-editable . --python 3.13 langgraph dev --allow-blocking`
-  :::
+
+:::
 
 ## NINTH ENTRY - 2026.03.16-18
 
