@@ -1,6 +1,6 @@
 # HeartCompass 研发之路
 
-### FIRST ENTRY - 2026.02.07
+## FIRST ENTRY - 2026.02.07
 
 ::: danger
 **以下内容补充于 2026.03.20**
@@ -9,14 +9,17 @@
 
 Why I wanna build an app like this:
 **写在前面**：我最近在观察研究 MBTI 是否真的能够准确地刻画一个人。首先拿我自己来说，几乎 ENTJ 的每个特征基本都能与我符合，而我观察的其他人也不约而同的符合着他们的 MBTI 类型所描述的特征。因此，通过 MBTI 进行人物分析可以算是一个 trigger。
+
 【2 月 7 日的日记部分内容暂不可见】
+
 ::: danger
 **以下内容补充于 2026.03.14**
 一个多月过去了，MVP 主链路已经跑通。一个月来随着开发工作持续进行，我越来越觉得这个产品如果仅仅定位于上面所述的范围，实在太过大材小用。
 
 - 一方面构建丰富的人物画像可以服务于和用户产生关系的全部群体 —— 家人、朋友，甚至是自己
 - 一方面人际关系的分析并不是一个很突破性的，或者说 ROI 很高的事情；收集大量的人物画像仅仅用于此目的过于大材小用。因此决定本产品主要定位在**虚拟人**—— 通过大量关系及画像上下文构建虚拟形象和用户对话
-  :::
+
+:::
 
 ```python
 class RelationStage(enum.Enum):
@@ -53,7 +56,7 @@ class RelationStage(enum.Enum):
 - context 应包含什么？怎么存储？怎么获取？
 - ……
 
-### SECOND ENTRY - 2026.02.22
+## SECOND ENTRY - 2026.02.22
 
 到现在为止，一周过去了，我基本上已经完成了系统架构的设计。我来陈述下已经完成的工作：
 
@@ -68,16 +71,16 @@ class RelationStage(enum.Enum):
 - `/getIntelligentReply`：传入用户和对方聊天的部分最近上下文给出用户回复建议。需要大量参考数据库中上下文信息，包括对方的个人画像以及他/她的 MBTI 类型，知识库中召回此类型的特征，推断怎样回复更能提高对方的好感、关注度，更能推动聊天进一步发展
   我了解到这个过程可能需要 agent 的几个功能：短期记忆、长期记忆、tool call、skills… 但我暂时还不知道该如何入手。
 
-### THIRD ENTRY - 2026.02.23
+## THIRD ENTRY - 2026.02.23
 
 我阅读了 langchain 部分文档，我得到了一些理解：
-首先，短期记忆就是指在同一 thread（相同 thread_id 才会加载同一份记忆）范围内用户与 LLM 先前的交互内容，包括 HumanMessage, AiMessage 和 ToolMessage 和一些相关信息。在 langchain 中可以通过 langgraph checkpoint 的方式保存每次回话的 messages 快照（或自定义的额外字段）在 AgentState 中，记录在内存 `InMemorySaver()`（LangGraph 的 checkpoint 保存器）或数据库支持的 checkpointer 中。进入新的回话时 agent 就可以保持对先前交互的记忆。
+首先，短期记忆就是指在同一 thread（相同 thread_id 才会加载同一份记忆）范围内用户与 LLM 先前的交互内容，包括 HumanMessage, AiMessage 和 ToolMessage 和一些相关信息。在 langchain 中可以通过 langgraph checkpoint 的方式保存每次回话的 messages 快照（或自定义的额外字段）在 AgentState 中，记录在内存 `InMemorySaver ()`（LangGraph 的 checkpoint 保存器）或数据库支持的 checkpointer 中。进入新的回话时 agent 就可以保持对先前交互的记忆。
 但 LLM 的上下文窗口有限，对于长对话过多的记忆可能超出其上下文窗口，所以需要设计记忆遗忘或压缩策略。常见策略包括：
 
 - trim messages（裁剪最早/近 N 条）
 - delete messages（规则删除）
 - summarize messages（总结压缩）
-  另外，长期记忆通常有两种形态：一种是基于 langgraph 的内存存储 `store = InMemoryStore()`（一个轻量 KV 容器）把需要长期记忆的信息结构化组织，通过 tool 来读取返回给 agent，InMemoryStore 在 creat_agent 时作为 store 参数传入，可在 tool 中作为 runtime 读取/更新。但通过 InMemoryStore 进行记忆存储一方面依赖于内存，一方面生命周期和 agent 绑定，不适合在生产环境使用。而在生产环境中可以将 tool 直连外部数据库，返回所需内容直接提供给 agent。另一种是向量检索型的长期记忆，即 RAG。通过【用户输入 → embedding → vector search → 取回相关记忆 → 拼接给 LLM】的链路实现记忆。
+  另外，长期记忆通常有两种形态：一种是基于 langgraph 的内存存储 `store = InMemoryStore ()`（一个轻量 KV 容器）把需要长期记忆的信息结构化组织，通过 tool 来读取返回给 agent，InMemoryStore 在 creat_agent 时作为 store 参数传入，可在 tool 中作为 runtime 读取/更新。但通过 InMemoryStore 进行记忆存储一方面依赖于内存，一方面生命周期和 agent 绑定，不适合在生产环境使用。而在生产环境中可以将 tool 直连外部数据库，返回所需内容直接提供给 agent。另一种是向量检索型的长期记忆，即 RAG。通过【用户输入 → embedding → vector search → 取回相关记忆 → 拼接给 LLM】的链路实现记忆。
   对于生产环境，一种可能的技术选型：
 - InMemorySaver → PostgreSaver
 - InMemoryStore → PostgreSQL 数据库
@@ -89,7 +92,7 @@ class RelationStage(enum.Enum):
   用户输入和对方聊天的部分最近上下文 → 通过当前用户获取当前 User 信息 → 根据 User 信息获取他当前处于的 RelationChain 以及关系链中的对方信息，结构化封装对方相关信息作为 context 的一部分 → 根据对方的 mbti 从 knowledge 中向量化检索相关条目，作为 context 的一部分 → 基于聊天的上下文从 ContextEmbedding 向量表中分别召回相关 event、chat_log、derived_insight 和 knowledge 条目，分别合理排序后结构化封装为 context 的一部分 → …(其他所需 context) → context 和当前功能的 prompt 一并传给 agent 等待回复
   :::
 
-### FOURTH ENTRY - 2026.02.25
+## FOURTH ENTRY - 2026.02.25
 
 现在的 agent 架构是这样：
 
@@ -110,7 +113,7 @@ def getAgent():
 
 但显然 ReAct 形式的自主决策的 agent 不是很符合我们固定工作流的设计。我们需要在工作流的每个节点都可控制可回溯，拿到中间产物。所以我理解 langgraph 的 StateGraph 更适配当前需求，更可控。所以我期望重构 agent 架构，不，另开一个单独的 workflow，保留原有的 ReAct agent。
 
-### FIFTH ENTRY - 2026.02.27
+## FIFTH ENTRY - 2026.02.27
 
 最近两天我完成了 StateGraph 的框架搭建，在这个工作流中，用户需要输入和对方的聊天上下文以供模型判断。基于我现有的架构（ChatLog 模型）需要用户把各平台（如微信、抖音）的聊天记录导出再通过系统能力落库。昨天我调研了各个微信聊天记录的导出方式，无一例外成本都非常高，直接让用户进行导出恐怕不大行。
 我又尝试了让用户上传聊天记录的截图交给模型处理（还构思了一些 rules，如**截图必须至少包含一个时间**、**必须按时间顺序上传**、**不得多于 5 张**），让模型返回符合 ChatLog 规范的结构化的 json：
@@ -182,7 +185,7 @@ prompt：
 - 效果极其差：时间混乱、sender 错乱、聊天内容与原文不符、存在无效信息如表情包（猪猪侠【sticker: red pig】）
   之后我理解原有的表是原始聊天记录 ChatLog，但由于任何渠道的原始聊天记录不便于收集导出，在本系统中粒度过细的原始聊天记录对于构建人物画像也没有什么用处，我希望更换一种模式：把 ChatLog 表换为聊天话题 ChatTopic 表。用户传入聊天记录截图（要求单次上传必须属于同一 topic，把语义化分割的任务交给用户），模型理解并抽取 crush_profile 和 chat_topic 并落库。后续构建上下文时直接使用 chat_topic 而无需基于原始聊天记录做进一步分析。这样既减轻了模型压力，又可以更精确的向量化和召回。
 
-### SIXTH ENTRY - 2026.03.04
+## SIXTH ENTRY - 2026.03.04
 
 最近几天一直埋头于开发工作，没顾得上写复盘。自上次数据模型重构后，到昨天为止，总算完成了 StateGraph 的全部链路。我把 `/getIntelligentReply` 改名为 `/conversationAnalysis`。通过一系列 node 完成了一条线性的 graph workflow。
 ::: warning
@@ -256,7 +259,7 @@ GPT-5.2-Codex 如此回复：
 >
 > 了解后我准备开始公共子图构建了。
 
-### SEVENTH ENTRY - 2026.03.06
+## SEVENTH ENTRY - 2026.03.06
 
 昨天感冒了，今天还没完全好。晕晕沉沉地对着现在已有的 ContextGraph 和 AnalysisGraph 不知所措。确实我一开始的需求 —— 通过聊天记录截图或自然语言叙述进行分析 —— 已经跑通了，但这个架构的成熟度实在不敢恭维...... 我承认这是我第一次用 langgraph 做开发，对于其 state 怎么设计、node 怎么分界这些标准都不清楚。于是我就栽到了下面的坑里：
 
@@ -280,7 +283,7 @@ class AnalysisGraphState(TypedDict):
 我发现我不懂怎么分 node 了。
 我想既然每个 node 接受整个 state 为参数，返回 state patch。我寻思我先前很多节点做的操作在新的 state 中根本不会改变 state 本身，都是得到中间产物 --- 消费。那我似乎没必要分这么多节点了。于是我干脆只保留了一个节点，中间过程都用普通函数 step...() 代替：
 
-#### ContextGraph
+### ContextGraph
 
 ```python
 async def node(state: ContextGraphState) -> ContextGraphState:
@@ -322,7 +325,7 @@ async def node(state: ContextGraphState) -> ContextGraphState:
 
 ```
 
-#### AnalysisGraph
+### AnalysisGraph
 
 ```python
 async def node(state: AnalysisGraphState) -> AnalysisGraphOutput:
@@ -501,7 +504,7 @@ async def continuousAnalysis(request: Request):
 - 重新评估 short-term memory ✅
   :::
 
-### EIGHTH ENTRY - 2026.03.14
+## EIGHTH ENTRY - 2026.03.14
 
 > MILEPOST
 > 哎，这会是一篇意义重大的日记。自 3.6 以来居然落下那么多东西没有及时写下来。
@@ -511,22 +514,22 @@ async def continuousAnalysis(request: Request):
 
 然鹅，这周也同样接受了太多关于 Agent 开发的知识，这些东西对我来讲可以说是颠覆性的。让我不得不从头思考这个工程的架构和实现。不出意外这些都会在这篇日记里面一一阐明。
 
-#### Virtual Figure 链路
+### Virtual Figure 链路
 
-##### 数据表与 API 完善
+#### 数据表与 API 完善
 
 - 为 Crush 表添加两个字段 `words_to_user` 和 `words_from_user`。前者表示对方对用户讲过的话，用于构建虚拟人模拟对方交流风格；后者反之，用于 analysis 时给用户回复建议
 - RelationChain 表添加字段 `context_block`，存放 ContextGraph 构建的关系与画像上下文，在虚拟人对话时消费
 - 添加新 API `/recalculateContextBlock` 在新增了新的 event、chat_topic 和 crush 画像内容时重新跑 ContextGraph 更新关系与画像上下文 context_block。使虚拟人拥有最新的上下文
 
-##### Websocket
+#### Websocket
 
 为了实现更真实的对话流，我不再采用 LLM 普遍的一问一答的形式，不再通过 SSE 向客户端推送消息。我建立了 Websocket 双向通信，遵守以下策略：
 ::: primary
 用户发信息后，计时器倒计时 WAITING_SECONDS_FOR_VIRTUAL_FIGURE 秒（暂定 15s）。若倒计时未结束时用户继续发消息，计时器重置。直到计时器结束（一个完整的 WAITING_SECONDS_FOR_VIRTUAL_FIGURE 秒用户没有发消息），将本轮次用户发送的全部消息按顺序打包后一并交由 VirtualFigureGraph 处理。处理后 Agent 生成若干条回复消息。每条消息随机间隔 0.8～2.2s 向客户端推送。
 :::
 
-##### VirtualFigureGraph
+#### VirtualFigureGraph
 
 **State 设计**：
 
@@ -576,11 +579,11 @@ call LLM
 
 ```
 
-##### 短期记忆
+#### 短期记忆
 
 每轮次 HumanMessage 和 AIMessage 放在 `state ["memory"]["messages"]` 中，不存放 SystemMessage，每次单独构建；VirtualFigureGraph compile 时使用 PostgresSaver 作为 checkpointer（详见上文）
 
-##### 本周的新认知与本项目的思考
+#### 本周的新认知与本项目的思考
 
 这周很偶然地接触到去年字节爆火的一个开源产品 DeerFlow，使用 LangStack 以 Multi-Agent 架构搭建的 Deep Research Agent。这个工程的建设很大程度上采用了 LangChain/LangGraph 的最佳实践，比如 state、node 的设计；以及很多 Agent 开发相关技术、架构，例如 Meta Prompt、Supervisor 架构、Handoffs 模式...... 都非常值得借鉴。回看 HeartCompass 中架构和链路的设计，果然有非常多的缺陷和优化点。因此我决定基于这些新的认知和 ChatGPT 一同完成 HeartCompass 的优化工作。
 ::: primary
@@ -600,25 +603,25 @@ call LLM
 - 引入 LangGraph Studio 调试：`uvx --refresh --from"langgraph-cli [inmem]"--with-editable . --python 3.13 langgraph dev --allow-blocking`
   :::
 
-### NINTH ENTRY - 2026.03.16-18
+## NINTH ENTRY - 2026.03.16-18
 
 > 大规模重构
 
-#### graph 目录架构重构
+### graph 目录架构重构
 
 agent/graph 目录中，以 graph 种类组织工程结构。
 
 ![graph 目录架构重构](https://charlie-assets.oss-rg-china-mainland.aliyuncs.com/images/article/image_27d6e6fa0a.png?x-oss-process=image/resize,w_500)
 
-#### 向量召回策略重构
+### 向量召回策略重构
 
 先前以 `distance` 作为唯一召回指标，没有考虑权重 `weight`、关键字、时间衰减。重构策略如下：
 
-##### 召回流程
+#### 召回流程
 
 参数校验 → 源范围归一化 → 向量召回 → 业务过滤 → 打分排序
 
-##### 候选逐条业务过滤与字段抽取
+#### 候选逐条业务过滤与字段抽取
 
 使用 `ContextEmbedding.embedding.cosine_distance (vector)` 计算距离
 查询条件与顺序：
@@ -627,7 +630,7 @@ agent/graph 目录中，以 graph 种类组织工程结构。
 - 按距离升序（越小越相似）
 - 候选数限制：`limit (int (os.getenv("VECTOR_CANDIDATES")))`
   每条候选会根据 `embedding.type` 分支读取关联对象并抽取：-**公共输出字段**：
-    - `data`：对应实体的 `toJson()` 结果
+    - `data`：对应实体的 `toJson ()` 结果
     - `weight`：对应实体权重，默认 `1.0`
     - `created_at`：仅部分类型参与时间衰减
       **分支规则**：
@@ -657,7 +660,7 @@ agent/graph 目录中，以 graph 种类组织工程结构。
     - `created_at = derived_insight.created_at`
       若类型与关联对象不匹配，直接跳过该候选。
 
-##### 召回评分
+#### 召回评分
 
 -**语义分**：`semantic_score = 1 - distance` -**时间衰减**：
 
@@ -668,13 +671,15 @@ agent/graph 目录中，以 graph 种类组织工程结构。
   其中：`delta_days = (now_utc - created_at).days`。若 `created_at` 无时区信息，会按 UTC 处理。
   所有有效候选按 `score` 降序排序，取前 `top_k` 条作为返回 `items`。
 
-#### ContextGraph 重构
+### ContextGraph 重构
 
-##### Pipeline
+#### Pipeline
 
 > 原先：LoadEntity → BuildProfileContext → BuildRecallQueries → RecallKnowledge → RecallNonKnowledge → GetInteractionSignal → OrganizeContext
-> **新架构**：
-> 链路 1：relation_chain_id → relation_chain → crush + current_stage → 整理，得到：
+
+**新架构**：
+
+链路 1：relation_chain_id → relation_chain → crush + current_stage → 整理，得到：
 
 ```python
 "basic_context": {
@@ -686,11 +691,17 @@ agent/graph 目录中，以 graph 种类组织工程结构。
 ```
 
 **若无聊天记录、无自然语言叙述输入，这些信息足够**
+
 链路 2：召回 events、chat_topics 和 derived_insights
+
 【思路一】relation_chain_id + 聊天记录/自然语言叙述 → LLM → tool call（向量召回封装为 tool） → 组织后的可直接作为上下文消费的 non_knowledge
+
 【思路二】（保留原有逻辑）聊天记录/自然语言叙述 → build query + relation_chain_id → recall → 手动组织
+
 链路 3：链路 1 后 → his_mbti → 关键字召回 knowledge
+
 链路 4：relation_chain_id → interaction_signal
+
 **图结构**：
 
 ```python
@@ -712,8 +723,8 @@ graph.add_node("nodeGetMBTIKnowledge", nodeGetMBTIKnowledge)
 graph.add_node("nodeGetInteractionSignal", nodeGetInteractionSignal)
 graph.add_node("nodeOrganizeContext", nodeOrganizeContext)
 
-## 三链路并行
-## BasicContext → MBTIKnowledge
+# 三链路并行
+# BasicContext → MBTIKnowledge
 graph.add_edge(START, "nodeGenBasicContext")
 graph.add_edge("nodeGenBasicContext", "nodeGetMBTIKnowledge")
 
@@ -762,7 +773,7 @@ graph.add_edge("nodeOrganizeContext", END)
 在实际实现过程中，由于一些问题最终按照以下方式组织图结构：
 **重要**：BasicContext 获取、Embedding 召回和 InteractionSignal 获取三条链路并行运行需要保证**在 nodeOrganizeContext 之前三链路均已结束**
 
-#### LangSmith Studio 调试
+### LangSmith Studio 调试
 
 - 安装依赖：`uv add"langgraph-cli [inmem]"`
 - 工程根目录配置 `langgraph.json`：
@@ -786,9 +797,9 @@ graph.add_edge("nodeOrganizeContext", END)
 
 ![LangSmith Studio](https://charlie-assets.oss-rg-china-mainland.aliyuncs.com/images/article/image_506e568667.png)
 
-#### AnalysisGraph 重构
+### AnalysisGraph 重构
 
-##### AnalysisGraph State 设计
+#### AnalysisGraph State 设计
 
 ```python
 class Request(TypedDict):
@@ -814,7 +825,7 @@ class AnalysisGraphState(MessagesState):
 
 ```
 
-##### AnalysisGraph 图结构
+#### AnalysisGraph 图结构
 
 ```python
 graph = StateGraph(
@@ -854,7 +865,7 @@ graph.add_edge("nodeCallLLM", END)
 
 ![可视化 AnalysisGraph](https://charlie-assets.oss-rg-china-mainland.aliyuncs.com/images/article/image_bba3b331c1.png?x-oss-process=image/resize,w_800)
 
-##### Tool Call 引入
+#### Tool Call 引入
 
 在AnalysisGraph中，Knowledge的获取不再采用之前每次调用都需要召回。我希望让模型判断当前语境是否是需要触发Knowledge召回的时机，如果是再按需召回。
 
@@ -872,7 +883,7 @@ Get MBTI/personality knowledge for this relation_chain to enrich persona and rel
 
 于是我设计了一个`ToolAndItsArgsHandler`，存放tool本身和处理其参数的回调函数`args_handler`。
 
-另外我单独封装了`handleIfToolCall()`方法，这样在graph node中一旦需要引入tool call就可以方便复用：
+另外我单独封装了`handleIfToolCall ()`方法，这样在graph node中一旦需要引入tool call就可以方便复用：
 
 ```python
 class ToolAndItsArgsHandler:
@@ -997,11 +1008,11 @@ agent = create_agent(
 agent.invoke(messages)
 ```
 
-### TENTH ENTRY - 2026.03.24-28
+## TENTH ENTRY - 2026.03.24-28
 
-#### VirtualFigureGraph 重构
+### VirtualFigureGraph 重构
 
-##### VirtualFigureGraph State 设计
+#### VirtualFigureGraph State 设计
 
 ```python
 class Message(TypedDict):
@@ -1028,7 +1039,7 @@ class VirtualFigureGraphState(
     llm_output: LLMOutput
 ```
 
-##### VirtualFigureGraph 图结构
+#### VirtualFigureGraph 图结构
 
 ```python
 graph = StateGraph(
@@ -1065,7 +1076,7 @@ graph.add_edge("nodeCallLLM", END)
 
 ![可视化 VirtualFigureGraph](https://charlie-assets.oss-rg-china-mainland.aliyuncs.com/images/article/image_ef2b0b63b1.png?x-oss-process=image/resize,w_1000)
 
-##### VirtualFigureGraph 上下文设计
+#### VirtualFigureGraph 上下文设计
 
 在 VirtualFigureGraph 中，模型输入的上下文分为5个部分：
 
@@ -1075,7 +1086,7 @@ graph.add_edge("nodeCallLLM", END)
 - Viking 记忆库召回的长期记忆。这些是基于用户和虚拟人交谈对话的内容，经过总结和抽取存在Viking远端的，是不可信的。放在`SystemMessage`中。
 - 本轮收到的消息，放在`HumanMessage`中。
 
-##### 推理内容reasoning_content的获取
+#### 推理内容reasoning_content的获取
 
 到目前为止，我们调用**LLM**的方式全部是基于LangStack ChatOpenAI的API。直接`llm.ainvoke()`获取结构化的标准的LLM响应。
 
@@ -1303,9 +1314,9 @@ reasoning_content = resp["reasoning_content"]
 ai_message = resp["ai_message"]
 ```
 
-#### Prompt 备份的教训
+### Prompt 备份的教训
 
-2026.3.22，Prompt Minder网站服务跪了。本工程中所有提示词都储存在Prompt Minder平台上，通过`getPrompt()`从远端实时拉取。遗憾的是，这些提示词既没有在本地备份，又没有做兜底。所以一时间本项目中涉及提示词的链路全部挂掉......
+2026.3.22，Prompt Minder网站服务跪了。本工程中所有提示词都储存在Prompt Minder平台上，通过`getPrompt ()`从远端实时拉取。遗憾的是，这些提示词既没有在本地备份，又没有做兜底。所以一时间本项目中涉及提示词的链路全部挂掉......
 
 事故发生后我迅速在github中[PromptMinder 项目](https://github.com/aircrushin/promptMinder)寻找作者联系方式，是 Monash University 在读硕士......于是我赶快和他联系：
 
@@ -1315,7 +1326,7 @@ ai_message = resp["ai_message"]
 
 这件事情告诉我们：使用不成熟的外部服务（Github就不必😂）一定要做好数据备份，最好设计兜底，不要100%相信，不要把命运交到别人手中......
 
-#### 接入飞书 Bot
+### 接入飞书 Bot
 
 > 重中之重，革命性的一集
 
@@ -1339,7 +1350,7 @@ ai_message = resp["ai_message"]
 
 [飞书开放平台](https://open.larkoffice.com/app/) 中提供了非常丰富的应用能力，其中**机器人**能力正是我们需要的。它是与用户在聊天中交互的应用，它可以向用户或群组自动发送消息，响应用户的消息，并能进行群组管理（这个暂时不需要）。另外其支持的API和文档十分完善，在Python项目中通过SDK可以直接调用，且看我操作。
 
-##### 飞书开放平台侧
+#### 飞书开放平台侧
 
 - 创建一个企业自建应用，启用“机器人”能力
 - 获取 app_id 和 app_secret
@@ -1347,16 +1358,16 @@ ai_message = resp["ai_message"]
 - 申请以应用的身份发消息（im:message:send_as_bot）权限
 - 创建版本并发布
 
-##### 代码侧
+#### 代码侧
 
 - 安装SDK `lark_oapi`，可参考文档[Python SDK 指南](https://open.larkoffice.com/document/server-side-sdk/python--sdk/preparations-before-development)和[Python SDK Demo](https://github.com/larksuite/oapi-sdk-python-demo).
 - 基于 app_id 和 app_secret 鉴权，初始化larkClient
-- 封装常用的IM API：`sendText()`、`sendImage()`、`sendFile()`等。
+- 封装常用的IM API：`sendText ()`、`sendImage ()`、`sendFile ()`等。
 - 创建WebSocketServer，作为服务的唯一入口
-- 通过`messageHandler()`将Virtual Figure等已有功能集成到WebSocketServer中
+- 通过`messageHandler ()`将Virtual Figure等已有功能集成到WebSocketServer中
 - 引入Menu和特定command，允许用户直接通过发送指令触发特定功能
 
-为了适配用户发的`str`类型的消息和SDK event_handler接受的`P2ImMessageReceiveV1`类型的消息，我专门做了一层`messageAdapter()`依旧作为回调函数适配类型差异。
+为了适配用户发的`str`类型的消息和SDK event_handler接受的`P2ImMessageReceiveV1`类型的消息，我专门做了一层`messageAdapter ()`依旧作为回调函数适配类型差异。
 
 ```python
 event_handler = (
@@ -1368,7 +1379,7 @@ event_handler = (
 )
 ```
 
-`messageHandler()`依旧采用**15s缓冲——批量处理——分条返回**的策略。接下来就是通过WebSocketServer向用户推送消息。值得注意的是，飞书SDK向用户推送消息需要一个id对用户进行标识。大致有以下三类id：
+`messageHandler ()`依旧采用**15s缓冲——批量处理——分条返回**的策略。接下来就是通过WebSocketServer向用户推送消息。值得注意的是，飞书SDK向用户推送消息需要一个id对用户进行标识。大致有以下三类id：
 
 ![三类用户标识id](https://charlie-assets.oss-rg-china-mainland.aliyuncs.com/images/article/image_42d6a4afe3.png?x-oss-process=image/resize,w_800)
 
@@ -1380,7 +1391,7 @@ event_handler = (
 这个链路和之前开发微信小程序时微信登录的鉴权颇有几分神似，回旋镖🪃！当时还专门写了一篇文档，详见 [微信小程序调用微信登录接口实现登录和鉴权的方案](https://charliebu.cn/articles/NzI4NzpDaGFybGllJ3NBcnRpY2xlczoxNzc0NzAxNzM4MjMy)。
 :::
 
-##### Menu 设计
+#### Menu 设计
 
 在 OpenClaw 中，用户可以通过发送特殊的指令进行对话之外的操作，如`/new`指令用来开启新的对话session。受其启发，我们既然抛弃了前端，那自然也需要留一个接口让用户进行除了对话之外的操作和配置。于是我设计了Menu，包含了一系列`/`开头的指令，如下：
 
@@ -1433,37 +1444,37 @@ menu = [
 ]
 ```
 
-`messageHandler()`收到用户消息后，先通过正则判断是否是已有的指令，提取规定的参数。然后直接绕过VirtualFigureGraph链路，直接触发对应的command函数。
+`messageHandler ()`收到用户消息后，先通过正则判断是否是已有的指令，提取规定的参数。然后直接绕过VirtualFigureGraph链路，直接触发对应的command函数。
 
-#### 接下来的 TODOs
+### 接下来的 TODOs
 
 首先请观赏下到目前为止的成果：
 
 ![Demo](https://charlie-assets.oss-rg-china-mainland.aliyuncs.com/images/article/20260327004123_rec__741092ca7b.gif)
 
-##### Viking 记忆库接入
+#### Viking 记忆库接入
 
 从现在VirtualFigureGraph的架构来讲，我把上下文分成5个部分（详见前文 VirtualFigureGraph 上下文设计）。在记忆部分，数据库中存放的是用户根据当前人物的 & 这段关系中的事实填充的**可信的**上下文；而仅仅有真实的可信上下文显然不足。在用户和虚拟人对话过程中，形成的非真实（不是现实中）的记忆也是重要的。否则虚拟人就会像傻子一样对前面对话的内容一无所知......
 
-这些**不可信**的记忆我希望按照两种途径进入上下文 —— 一种LangChain官方支持的短期记忆存储checkpoint（只包含双方的对话记录，HumanMessage和AIMessage）在内存`InMemorySaver()`，这些短期记忆自然会在进程重启后丢失，进程不重启也会大量慢慢膨胀，容易塞满上下文窗口，所以需要不时 trim；另种是将两人的对话传入远端记忆库，经过总结、提炼，形成长期记忆落库。
+这些**不可信**的记忆我希望按照两种途径进入上下文 —— 一种LangChain官方支持的短期记忆存储checkpoint（只包含双方的对话记录，HumanMessage和AIMessage）在内存`InMemorySaver ()`，这些短期记忆自然会在进程重启后丢失，进程不重启也会大量慢慢膨胀，容易塞满上下文窗口，所以需要不时 trim；另种是将两人的对话传入远端记忆库，经过总结、提炼，形成长期记忆落库。
 
 对于远端记忆库，一开始我看到刚刚推出的火山 Mem0 记忆库，认定是个不错的选择。但尝试接入过程中经历了非常多的槽点：update接口跑不通、add memory慢到令人发指的程度、Mem0 v2 API不支持、文档啥也没有......于是果断放弃，准备使用火山一直在维护的相对成熟的Viking记忆库。
 
-##### 上下文写入方式重构 & MarkDown动态写入
+#### 上下文写入方式重构 & MarkDown动态写入
 
-在 OpenClaw 中，用户和Claw对话时，一些重要的信息一旦被Claw捕捉到，就会在workspace的诸多markdown文件中动态写入，再后续读到这些文件从而“记住”。与它不同，我们的记忆是存在结构化的数据库中的，但这种动态写入的策略实在是值得借鉴。结构化的字段之外，我们在一些表中有类似的“补充信息”的字段，例如`other_info`和`additional_info`。这些字段在设计之初时都设定为`MutableList.as_mutable(ARRAY(JSONB))`的json数组类型，本意是想按照键值对的方式语义化地存储补充的信息。但考虑OpenClaw的设计，既然是要给模型读，markdown格式的文本应当再适合不过。
+在 OpenClaw 中，用户和Claw对话时，一些重要的信息一旦被Claw捕捉到，就会在workspace的诸多markdown文件中动态写入，再后续读到这些文件从而“记住”。与它不同，我们的记忆是存在结构化的数据库中的，但这种动态写入的策略实在是值得借鉴。结构化的字段之外，我们在一些表中有类似的“补充信息”的字段，例如`other_info`和`additional_info`。这些字段在设计之初时都设定为`MutableList.as_mutable (ARRAY (JSONB))` 的 json 数组类型，本意是想按照键值对的方式语义化地存储补充的信息。但考虑 OpenClaw 的设计，既然是要给模型读，markdown 格式的文本应当再适合不过。
 
-在新设计中，我们需要完全重构现有的上下文写入方式。现在用户有两种方式写入上下文 —— 自然语言叙述，经过模型抽取用户画像和事件event后落库；以及聊天记录截图，经过模型抽取用户画像和聊天话题chat_topic后落库。设计之初没有发觉，这样的方式是极为生硬而灵活性性差的。更重要的是，现有逻辑只能增加新的记录，不能修改已有的不完善 / 有误的记忆。这是完全不符合预期的。
+在新设计中，我们需要完全重构现有的上下文写入方式。现在用户有两种方式写入上下文 —— 自然语言叙述，经过模型抽取用户画像和事件 event 后落库；以及聊天记录截图，经过模型抽取用户画像和聊天话题 chat_topic 后落库。设计之初没有发觉，这样的方式是极为生硬而灵活性性差的。更重要的是，现有逻辑只能增加新的记录，不能修改已有的不完善 / 有误的记忆。这是完全不符合预期的。
 
-依旧参考OpenClaw，我希望设计一个Super Agent专门用来补充 / 修改上下文。用户通过特定的指令从对话模式进入Context Agent模式，直接和agent对话来通过自然语言指导agent写入上下文。对于agent侧，我们需要在每次写入前，先读取原有的字段 / 文本内容，进而在原有内容基础上做整体修改。我理解这样的写入方式是可以称得上最佳实践。
+依旧参考 OpenClaw，我希望设计一个 Super Agent 专门用来补充 / 修改上下文。用户通过特定的指令从对话模式进入 Context Agent 模式，直接和 agent 对话来通过自然语言指导 agent 写入上下文。对于 agent 侧，我们需要在每次写入前，先读取原有的字段 / 文本内容，进而在原有内容基础上做整体修改。我理解这样的写入方式是可以称得上最佳实践。
 
-同时，我们需要完成上下文相关的每张表的CRUD API，并进行Tool化。之后封装在单独的Skill中，指导agent进行落库。
+同时，我们需要完成上下文相关的每张表的 CRUD API，并进行 Tool 化。之后封装在单独的 Skill 中，指导 agent 进行落库。
 
-极其重要的一点是，在agent根据skill进行tool call落库之前，**必须**触发一次interrupt（Human-in-the-loop），让用户手动确认。所有的落库操作都是高危操作，绝不能全权交给agent完成。
+极其重要的一点是，在 agent 根据 skill 进行 tool call 落库之前，**必须**触发一次 interrupt（Human-in-the-loop），让用户手动确认。所有的落库操作都是高危操作，绝不能全权交给 agent 完成。
 
-##### 其他
+#### 其他
 
 其余就剩一些小优化了：
 
 - 短期记忆 trim
-- 飞书bot中System消息用卡片发送
+- 飞书 bot 中 System 消息用卡片发送
