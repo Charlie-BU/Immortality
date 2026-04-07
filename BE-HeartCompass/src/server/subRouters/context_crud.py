@@ -42,7 +42,7 @@ async def deleteEvent(request: Request):
     event_id = body["id"]
     with session() as db:
         res = await ccDeleteEvent(db=db, user_id=user_id, event_id=int(event_id))
-    return res
+        return res
 
 
 @context_crud_router.get("/getEventById", auth_required=True)
@@ -51,7 +51,7 @@ async def getEventById(request: Request):
     event_id = request.query_params.get("id", None)
     with session() as db:
         res = await ccGetEventById(db=db, user_id=user_id, event_id=int(event_id))
-    return res
+        return res
 
 
 @context_crud_router.get("/getEventsByRelationChainId", auth_required=True)
@@ -68,7 +68,7 @@ async def getEventsByRelationChainId(request: Request):
             page_size=int(page_size),
             current_page=int(current_page),
         )
-    return res
+        return res
 
 
 @context_crud_router.post("/createCrush", auth_required=True)

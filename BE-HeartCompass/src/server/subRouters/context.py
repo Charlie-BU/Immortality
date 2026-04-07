@@ -46,7 +46,7 @@ async def recallContextFromEmbedding(request: Request):
             recall_from=recall_from,
             relation_chain_id=(int(relation_chain_id) if relation_chain_id else None),
         )
-    return res
+        return res
 
 
 # 添加知识库条目
@@ -61,7 +61,7 @@ async def addKnowledge(request: Request):
             content=json.dumps(content) if isinstance(content, dict) else content,
             with_embedding=bool(with_embedding),
         )
-    return res
+        return res
 
 
 # 通过自然语言添加上下文
@@ -78,7 +78,7 @@ async def addContextByNaturalLanguage(request: Request):
             content=json.dumps(content) if isinstance(content, dict) else content,
             with_embedding=bool(with_embedding),
         )
-    return res
+        return res
 
 
 # 通过聊天记录截图添加上下文
@@ -101,4 +101,4 @@ async def addContextByScreenshots(request: Request):
             additional_context=additional_context,
             with_embedding=bool(with_embedding),
         )
-    return res
+        return res

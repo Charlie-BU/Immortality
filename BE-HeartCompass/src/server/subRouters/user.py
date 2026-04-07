@@ -38,7 +38,7 @@ async def getUserById(request: Request):
         )
     with session() as db:
         res = userGetUserById(db=db, id=int(id))
-    return res
+        return res
 
 
 # 通过access_token获取用户详情
@@ -47,7 +47,7 @@ async def getMyInfo(request: Request):
     user_id = userGetUserIdByAccessToken(request=request)
     with session() as db:
         res = userGetUserById(db=db, id=user_id)
-    return res
+        return res
 
 
 # 通过用户名或昵称或邮箱获取用户信息
@@ -67,7 +67,7 @@ async def getUserByUsernameOrNicknameOrEmail(request: Request):
             db=db,
             username_or_nickname_or_email=username_or_nickname_or_email,
         )
-    return res
+        return res
 
 
 # 用户登录
@@ -78,7 +78,7 @@ async def login(request: Request):
     password = data["password"]
     with session() as db:
         res = userLogin(db=db, username=username, password=password)
-    return res
+        return res
 
 
 # 用户注册
@@ -101,7 +101,7 @@ async def register(request: Request):
             mbti=mbti,
             password=password,
         )
-    return res
+        return res
 
 
 # 修改密码
@@ -118,4 +118,4 @@ async def modifyPassword(request: Request):
             old_password=old_password,
             new_password=new_password,
         )
-    return res
+        return res
