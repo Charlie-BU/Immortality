@@ -210,7 +210,7 @@ class Crush(Base, SerializableMixin):
 
     is_active = Column(
         Boolean,
-        nullable=True,
+        nullable=False,
         default=True,
         comment="是否有效",
     )
