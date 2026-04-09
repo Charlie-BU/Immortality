@@ -16,4 +16,4 @@ wheels/
 
 # Alembic migrations
 alembic.ini
-alembic/versions/
+**/alembic/versions/

@@ -1,0 +1,35 @@
+[project]
+name = "immortality"
+version = "0.1.0"
+description = ""
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "alembic>=1.18.3",
+    "bcrypt>=5.0.0",
+    "python-jose[cryptography]>=3.5.0",
+    "dotenv>=0.9.9",
+    "robyn>=0.82.0",
+    "sqlalchemy>=2.0.46",
+    "langchain>=1.2.10",
+    "langgraph>=1.0.10",
+    "langchain-openai>=1.1.9",
+    "requests>=2.32.0",
+    "pgvector>=0.3.6",
+    "volcengine-python-sdk[ark]>=5.0.9",
+    "aiohttp>=3.13.3",
+    "psycopg-binary>=3.3.3",
+    "psycopg>=3.3.3",
+    "langgraph-checkpoint-postgres>=3.0.4",
+    "langgraph-cli[inmem]==0.4.5",
+    "hupper>=1.12.1",
+    "lark-oapi>=1.5.3",
+    "langgraph-api<0.5.0",
+    "protobuf<6",
+    "vikingdb-python-sdk>=0.1.15",
+]
+
+[[tool.uv.index]]
+name = "volces"
+url = "https://mirrors.volces.com/pypi/simple/"
