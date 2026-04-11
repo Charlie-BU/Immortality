@@ -156,3 +156,73 @@ def deleteKnowledgePiece(
             "status": 200,
             "message": "Delete knowledge success",
         }
+
+
+def getKnowledgePiece(
+    user_id: int,
+    knowledge_id: int,
+) -> dict:
+    """
+    通过 knowledge_id 获取知识详情
+    """
+    if not isinstance(user_id, int):
+        return {"status": -1, "message": "Invalid user_id"}
+    if not isinstance(knowledge_id, int):
+        return {"status": -2, "message": "Invalid knowledge_id"}
+
+    with session() as db:
+        knowledge = (
+            db.query(Knowledge)
+            .filter(
+                Knowledge.id == knowledge_id,
+                Knowledge.user_id == user_id,
+                Knowledge.is_deleted == False,
+            )
+            .first()
+        )
+        if not knowledge:
+            return {"status": -3, "message": "Knowledge not found"}
+        return {
+            "status": 200,
+            "message": "Get knowledge success",
+            "knowledge": knowledge.toJson(
+                exclude=["embedding", "embedding_model_name"]
+            ),
+        }
+
+
+def getAllKnowledgePieces(
+    user_id: int,
+) -> dict:
+    """
+    获取当前 user 所有知识（不包含详情）
+    """
+    if not isinstance(user_id, int):
+        return {"status": -1, "message": "Invalid user_id"}
+
+    with session() as db:
+        knowledge_pieces = (
+            db.query(Knowledge)
+            .filter(
+                Knowledge.user_id == user_id,
+                Knowledge.is_deleted == False,
+            )
+            .order_by(Knowledge.updated_at.desc())
+            .all()
+        )
+        return {
+            "status": 200,
+            "message": "Get all knowledge success",
+            "knowledge_pieces": [
+                item.toJson(
+                    include=[
+                        "id",
+                        "user_id",
+                        "is_deleted",
+                        "created_at",
+                        "updated_at",
+                    ]
+                )
+                for item in knowledge_pieces
+            ],
+        }

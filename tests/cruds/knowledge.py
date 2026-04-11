@@ -1,6 +1,4 @@
 import asyncio
-from pathlib import Path
-
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,6 +6,8 @@ load_dotenv()
 from src.services.knowledge import (
     addKnowledgePiece,
     deleteKnowledgePiece,
+    getAllKnowledgePieces,
+    getKnowledgePiece,
     recallKnowledgePieces,
 )
 
@@ -38,6 +38,21 @@ def testDeleteKnowledgePiece(knowledge_id: int):
     return res
 
 
+def testGetKnowledgePiece(knowledge_id: int):
+    res = getKnowledgePiece(
+        user_id=1,
+        knowledge_id=knowledge_id,
+    )
+    return res
+
+
+def testGetAllKnowledgePieces():
+    res = getAllKnowledgePieces(
+        user_id=1,
+    )
+    return res
+
+
 
 if __name__ == "__main__":
-    print(asyncio.run(testRecallKnowledgePieces("自我宣传与社交")))
+    print(testGetAllKnowledgePieces())

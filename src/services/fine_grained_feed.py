@@ -13,6 +13,7 @@ from src.database.models import (
     FineGrainedFeedConflict,
     OriginalSource,
 )
+from src.utils.index import timeDecay
 
 
 logger = logging.getLogger(__name__)
@@ -138,7 +139,9 @@ async def addFineGrainedFeed(
 
         # 向量化
         try:
-            vector = await vectorizeText(content)
+            vector = await vectorizeText(
+                f"{sub_dimension}{"\n" if sub_dimension else ""}{content}"
+            )
         except Exception as e:
             logger.error(f"Embedding generation failed: {str(e)}")
             return {"status": -10, "message": f"Embedding generation failed"}
@@ -359,6 +362,92 @@ def getAllFineGrainedFeed(
                 )
                 for item in fine_grained_feeds
             ],
+        }
+
+
+async def recallFineGrainedFeeds(
+    user_id: int,
+    fr_id: int,
+    query: str,
+    top_k: int = 10,
+) -> dict:
+    """
+    召回细粒度信息
+    """
+    if not isinstance(user_id, int):
+        return {"status": -1, "message": "Invalid user_id"}
+    if not isinstance(fr_id, int):
+        return {"status": -2, "message": "Invalid fr_id"}
+    if not query or query.strip() == "":
+        return {"status": -3, "message": "Query is empty"}
+    if not isinstance(top_k, int) or top_k <= 0:
+        return {"status": -4, "message": "Top_k must be greater than 0"}
+
+    try:
+        vector = await vectorizeText(query.strip())
+    except Exception as e:
+        logger.error(f"Embedding failed: {str(e)}")
+        return {"status": -5, "message": "Embedding failed"}
+    if not isinstance(vector, list) or not vector:
+        return {"status": -6, "message": "Invalid embedding result"}
+
+    distance = FineGrainedFeed.embedding.cosine_distance(vector)
+    confidence_weight_map = {
+        FineGrainedFeedConfidence.VERBATIM: 1.0,
+        FineGrainedFeedConfidence.ARTIFACT: 0.85,
+        FineGrainedFeedConfidence.IMPRESSION: 0.7,
+    }
+
+    with session() as db:
+        fr = _checkFigureAndRelationOwnership(db, user_id, fr_id)
+        if fr is None:
+            return {"status": -7, "message": "FigureAndRelation not found"}
+        try:
+            candidates: list[tuple[FineGrainedFeed, float]] = (
+                db.query(FineGrainedFeed, distance.label("distance"))
+                .filter(
+                    FineGrainedFeed.fr_id == fr_id,
+                    FineGrainedFeed.is_deleted == False,
+                )
+                .order_by(distance.asc())
+                .limit(int(os.getenv("VECTOR_CANDIDATES")) or 100)
+                .all()
+            )
+        except Exception as e:
+            logger.error(f"Recall FineGrainedFeed failed: {str(e)}")
+            return {"status": -8, "message": "Recall FineGrainedFeed failed"}
+
+        results = []
+        for fine_grained_feed, dist in candidates:
+            semantic_score = max(0.0, min(1.0, 1 - float(dist) / 2))
+            confidence_weight = confidence_weight_map.get(
+                fine_grained_feed.confidence, 0.7
+            )
+            created_at = fine_grained_feed.created_at
+
+            decay = timeDecay(created_at) if created_at else 1.0
+            raw_score = semantic_score * 0.8 + confidence_weight * 0.2
+            score = raw_score * decay
+
+            results.append(
+                {
+                    "distance": float(dist),
+                    "score": score,
+                    "semantic_score": semantic_score,
+                    "confidence_weight": confidence_weight,
+                    "time_decay": decay,
+                    "fine_grained_feed": fine_grained_feed.toJson(
+                        exclude=["embedding", "embedding_model_name"]
+                    ),
+                }
+            )
+
+        results.sort(key=lambda x: x["score"], reverse=True)
+        results = results[:top_k]
+        return {
+            "status": 200,
+            "message": "Recall success",
+            "items": results,
         }
 
 

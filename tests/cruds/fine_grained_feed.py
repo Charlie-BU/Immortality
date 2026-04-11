@@ -18,6 +18,7 @@ from src.services.fine_grained_feed import (
     getFineGrainedFeedConflict,
     getOriginalSource,
     hardDeleteFineGrainedFeedConflict,
+    recallFineGrainedFeeds,
     resolveFineGrainedFeedConflict,
     updateFineGrainedFeed,
 )
@@ -30,9 +31,9 @@ def testAddOriginalSource(fr_id: int):
         confidence=FineGrainedFeedConfidence.VERBATIM,
         included_dimensions=[
             FineGrainedFeedDimension.PERSONALITY,
-            FineGrainedFeedDimension.MEMORY,
+            FineGrainedFeedDimension.INTERACTION_STYLE,
         ],
-        content="她在团队讨论里非常理性，也会主动照顾新成员。",
+        content="xxxxxx",
         approx_date="2026-01-20",
     )
     return res
@@ -65,16 +66,62 @@ def testGetAllOriginalSource(fr_id: int):
 
 
 async def testAddFineGrainedFeed(fr_id: int, original_source_id: int):
-    res = await addFineGrainedFeed(
-        user_id=1,
-        fr_id=fr_id,
-        original_source_id=original_source_id,
-        dimension=FineGrainedFeedDimension.INTERACTION_STYLE,
-        confidence=FineGrainedFeedConfidence.IMPRESSION,
-        content="她通常先倾听，再用很温和的方式给建议。",
-        sub_dimension="沟通偏好",
-    )
-    return res
+    mock = [
+        {
+            "content": "她在分歧出现时会先复述对方观点，确认理解一致后再表达立场。",
+            "sub_dimension": "冲突调解",
+        },
+        {
+            "content": "遇到高压项目时，她会把任务拆成小时级清单并在看板实时更新。",
+            "sub_dimension": "任务管理",
+        },
+        {
+            "content": "她偏好语音沟通复杂问题，文字仅用于留痕和结论确认。",
+            "sub_dimension": "沟通媒介偏好",
+        },
+        {
+            "content": "每周五她会主动发一份复盘，包含本周失误、改进动作和下周实验计划。",
+            "sub_dimension": "复盘习惯",
+        },
+        {
+            "content": "她对时间非常敏感，会议迟到五分钟以上会明显不耐烦。",
+            "sub_dimension": "时间边界",
+        },
+        {
+            "content": "在陌生社交场合她会先观察氛围，通常二十分钟后才开始主动发言。",
+            "sub_dimension": "社交启动节奏",
+        },
+        {
+            "content": "面对含糊需求时，她会连续追问三层“为什么”，直到目标可量化。",
+            "sub_dimension": "问题澄清方式",
+        },
+        {
+            "content": "她不喜欢被临时打断深度工作，常把下午两点到四点设为免打扰时段。",
+            "sub_dimension": "专注保护策略",
+        },
+        {
+            "content": "收到负面反馈后她会先沉默记录，再在24小时内给出结构化回应。",
+            "sub_dimension": "反馈处理机制",
+        },
+        {
+            "content": "她会记住同事的小偏好，比如咖啡口味和禁忌话题，用来降低协作摩擦。",
+            "sub_dimension": "关系维护细节",
+        },
+    ]
+    ress = []
+    for item in mock:
+        res = await addFineGrainedFeed(
+            user_id=1,
+            fr_id=fr_id,
+            original_source_id=original_source_id,
+            dimension=FineGrainedFeedDimension.INTERACTION_STYLE,
+            confidence=FineGrainedFeedConfidence.IMPRESSION,
+            content=item["content"],
+            sub_dimension=item["sub_dimension"],
+        )
+        ress.append(res)
+    
+    return ress
 
 
 def testDeleteFineGrainedFeed(fr_id: int, fine_grained_feed_id: int):
@@ -119,6 +166,16 @@ def testGetAllFineGrainedFeed(fr_id: int):
     return res
 
 
+async def testRecallFineGrainedFeeds(fr_id: int, query: str, top_k: int):
+    res = await recallFineGrainedFeeds(
+        user_id=1,
+        fr_id=fr_id,
+        query=query,
+        top_k=top_k,
+    )
+    return res
+
+
 def testAddFineGrainedFeedConflict(fr_id: int, feed_ids: list[int]):
     res = addFineGrainedFeedConflict(
         user_id=1,
@@ -131,7 +188,9 @@ def testAddFineGrainedFeedConflict(fr_id: int, feed_ids: list[int]):
     return res
 
 
-def testHardDeleteFineGrainedFeedConflict(fr_id: int, fine_grained_feed_conflict_id: int):
+def testHardDeleteFineGrainedFeedConflict(
+    fr_id: int, fine_grained_feed_conflict_id: int
+):
     res = hardDeleteFineGrainedFeedConflict(
         user_id=1,
         fr_id=fr_id,
@@ -172,7 +231,5 @@ def testGetAllFineGrainedFeedConflict(
 
 if __name__ == "__main__":
     # print(testAddOriginalSource(fr_id=1))
-    # print(asyncio.run(testAddFineGrainedFeed(fr_id=1, original_source_id=1)))
-    print(testDeleteFineGrainedFeed(fr_id=1, fine_grained_feed_id=1))
-    print(testDeleteOriginalSource(fr_id=1, original_source_id=1))
-   
+    # print(asyncio.run(testAddFineGrainedFeed(fr_id=1, original_source_id=2)))
+    print(asyncio.run(testRecallFineGrainedFeeds(fr_id=1, query="人际交往", top_k=3)))
