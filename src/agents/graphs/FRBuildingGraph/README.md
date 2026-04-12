@@ -21,9 +21,8 @@
    根据 figure_role 和内容理解得到 OriginalSourceType、confidence、included_dimensions、approx_date（如有）
    将文本清洗，得到 content。保证有价值内容必须 100% 完整，不能缺失任何重要信息。去除重复内容及废话。
    使用方法 src/services/fine_grained_feed.py addOriginalSource 落库
-5. 使用方法 src/services/fine_grained_feed.py getOriginalSource 得到刚刚添加的 original_source 示例
-6. 更新 FigureAndRelation 中的固有字段：
-   6.1 通过 original_source.content 抽取以下字段，只抽取明确提及或可显然推断的字段。
+5. 更新 FigureAndRelation 中的固有字段：
+   5.1 通过 original_source.content 抽取以下字段，只抽取明确提及或可显然推断的字段。
         - figure_mbti
         - figure_birthday
         - figure_occupation
@@ -36,28 +35,28 @@
         - words_figure2user
         - words_user2figure
         - exact_relation
-    6.2 匹配 FigureAndRelation 表中对应字段格式
-    6.3 对于每个抽取的字段，和 FigureAndRelation 中现有值进行对比：
+    5.2 匹配 FigureAndRelation 表中对应字段格式
+    5.3 对于每个抽取的字段，和 FigureAndRelation 中现有值进行对比：
         - 若现有值为空，直接更新
         - 若新值是现有值的补充，合并到现有值中
         - 若新值与现有值存在矛盾，按照 recipe/conflict_handle 中的规则进行更新
     方法：src/services/figure_and_relation.py updateFigureAndRelation
-7. 添加 / 更新 FineGrainedFeed 细粒度信息
-   7.1 根据当前 figure_role 阅读 recipe/by_role/{figure_role} 的策略
-   7.2 根据当前 figure_role 的特定维度规则，并行抽取各个维度信息。抽取后的每条信息格式如下：
+6. 添加 / 更新 FineGrainedFeed 细粒度信息
+   6.1 根据当前 figure_role 阅读 recipe/by_role/{figure_role} 的策略
+   6.2 根据当前 figure_role 的特定维度规则，并行抽取各个维度信息。抽取后的每条信息格式如下：
    {
       "dimension": FineGrainedFeedDimension
       "sub_dimension": str
       "content": str
    }
-   7.3 对于每条抽取的信息
-        7.3.1 使用其 content 作为 query 在 FineGrainedFeed 中召回，top-k 取 3-5（需测试，取决于响应速度），召回方法：src/services/fine_grained_feed.py recallFineGrainedFeeds
-        7.3.2 遍历每条召回的 fine_grained_feed.content，与当前抽取的信息 content 进行对比，设置 flag 为 False
+   6.3 对于每条抽取的信息
+        6.3.1 使用其 content 作为 query 在 FineGrainedFeed 中召回，top-k 取 3-5（需测试，取决于响应速度），召回方法：src/services/fine_grained_feed.py recallFineGrainedFeeds
+        6.3.2 遍历每条召回的 fine_grained_feed.content，与当前抽取的信息 content 进行对比，设置 flag 为 False
             - 若二者无关，continue 跳过
             - 若新 content 是召回 fine_grained_feed.content 的补充，合并到召回 fine_grained_feed.content 中，使用方法：src/services/fine_grained_feed.py updateFineGrainedFeed；设置 flag 为 True，之后 break 跳出循环
             - 若新 content 与召回 fine_grained_feed.content 存在矛盾，按照 recipe/conflict_handle 中的规则进行更新，使用方法：src/services/fine_grained_feed.py updateFineGrainedFeed；设置 flag 为 True，之后 break 跳出循环
-        7.3.3 若 flag 扔为 False，说明当前抽取的信息 content 与召回 fine_grained_feed.content 无关，直接添加到 FineGrainedFeed 表中
+        6.3.3 若 flag 扔为 False，说明当前抽取的信息 content 与召回 fine_grained_feed.content 无关，直接添加到 FineGrainedFeed 表中
             方法：src/services/fine_grained_feed.py addFineGrainedFeed
-8. 记录日志
-9. graph 完成，返回日志
+7. 记录日志
+8. graph 完成，返回日志
 
