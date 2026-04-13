@@ -1,3 +1,4 @@
+import json
 import logging
 from dotenv import load_dotenv
 
@@ -48,5 +49,5 @@ if __name__ == "__main__":
 
     start_time = time.perf_counter()
     result = asyncio.run(main())
-    print(result)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
     print(f"Total time: {time.perf_counter() - start_time}s")

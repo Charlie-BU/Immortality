@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
+from enum import Enum
+import json
 import math
 import os
+from typing import Any
 from sqlalchemy.orm import Session
 
 from src.database.models import FigureAndRelation, OriginalSource
@@ -94,3 +97,20 @@ def normalizeText(value) -> str:
     if not isinstance(value, str):
         return ""
     return value.strip()
+
+
+def serialize2String(value: Any) -> str | None:
+    """
+    将 str/list/dict/enum 等不同类型的值序列化为字符串
+    """
+    if value is None:
+        return None
+    if isinstance(value, Enum):
+        return str(value.value)
+    if isinstance(value, (list, dict)):
+        return json.dumps(
+            value,
+            ensure_ascii=False,
+            default=lambda x: x.value if isinstance(x, Enum) else str(x),
+        )
+    return str(value)

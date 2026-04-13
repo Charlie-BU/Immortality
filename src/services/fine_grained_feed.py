@@ -10,11 +10,13 @@ from src.database.enums import (
 )
 from src.database.index import session
 from src.database.models import (
+    FROverallUpdateLog,
     FineGrainedFeed,
     FineGrainedFeedConflict,
     OriginalSource,
 )
 from src.utils.index import (
+    serialize2String,
     timeDecay,
     checkFigureAndRelationOwnership,
     checkOriginalSourceOwnership,
@@ -224,6 +226,7 @@ async def updateFineGrainedFeed(
         if not isinstance(vector, list) or not vector:
             return {"status": -11, "message": "Invalid embedding result"}
 
+        old_content = fine_grained_feed.content
         fine_grained_feed.original_source_id = new_original_source_id
         fine_grained_feed.content = new_content
         fine_grained_feed.sub_dimension = (
@@ -231,6 +234,15 @@ async def updateFineGrainedFeed(
         )
         fine_grained_feed.embedding = vector
         fine_grained_feed.embedding_model_name = os.getenv("EMBEDDING_MODEL_NAME") or ""
+        db.add(
+            FROverallUpdateLog(
+                fr_id=fr_id,
+                update_field_or_sub_dimension=fine_grained_feed.sub_dimension or "",
+                update_dimension=fine_grained_feed.dimension,
+                old_value=serialize2String(old_content),
+                new_value=serialize2String(fine_grained_feed.content),
+            )
+        )
 
         try:
             db.commit()

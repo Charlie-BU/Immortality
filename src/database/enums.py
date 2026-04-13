@@ -108,6 +108,14 @@ class OriginalSourceType(enum.Enum):
     PUBLIC_FIGURE_ARTIFACT = "public_figure_artifact"  # 创作物（代码、设计稿等）
 
 
+class ConflictStatus(enum.Enum):
+    PENDING = "pending"  # 待处理
+    RESOLVED_KEEP_OLD = "resolved_keep_old"  # 保持旧值
+    RESOLVED_ACCEPT_NEW = "resolved_accept_new"  # 采取新值
+    RESOLVED_MERGE = "resolved_merge"  # 合并，采取两者
+    RESOLVED_REWRITE = "resolved_rewrite"  # 人为重写
+
+
 class AnalysisType(enum.Enum):
     CONVERSATION = "conversation"  # 聊天记录分析
     NARRATIVE = "narrative"  # 自然语言叙述分析

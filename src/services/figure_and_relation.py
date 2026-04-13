@@ -3,9 +3,9 @@ from typing import Any
 
 from src.database.enums import FigureRole, FineGrainedFeedDimension, Gender, MBTI
 from src.database.index import session
-from src.database.models import FigureAndRelation
+from src.database.models import FROverallUpdateLog, FigureAndRelation
 from src.services.fine_grained_feed import recallFineGrainedFeeds
-from src.utils.index import checkFigureAndRelationOwnership
+from src.utils.index import checkFigureAndRelationOwnership, serialize2String
 
 
 logger = logging.getLogger(__name__)
@@ -242,8 +242,21 @@ def updateFigureAndRelation(
             if figure_and_relation is None:
                 return {"status": -6, "message": "FigureAndRelation not found"}
 
+            fr_logs = []
             for field, value in updates.items():
+                old_value = getattr(figure_and_relation, field)
                 setattr(figure_and_relation, field, value)
+                fr_logs.append(
+                    FROverallUpdateLog(
+                        fr_id=fr_id,
+                        update_field_or_sub_dimension=field,
+                        old_value=serialize2String(old_value),
+                        new_value=serialize2String(value),
+                    )
+                )
+
+            if fr_logs:
+                db.add_all(fr_logs)
 
             db.commit()
         except Exception as e:

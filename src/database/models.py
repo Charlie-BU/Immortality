@@ -21,12 +21,13 @@ from datetime import datetime, timezone
 from src.database.enums import (
     MBTI,
     AnalysisType,
+    ConflictStatus,
     FigureRole,
     FineGrainedFeedConfidence,
     FineGrainedFeedDimension,
     Gender,
     UserLevel,
-    OriginalSourceType
+    OriginalSourceType,
 )
 
 
@@ -420,9 +421,8 @@ class FineGrainedFeedConflict(Base, SerializableMixin):
         nullable=False,
         comment="冲突的细粒度信息ID列表",
     )
-    description = Column(Text, nullable=False, comment="冲突内容描述")
-    resolved = Column(Boolean, default=False, comment="是否已解决")
-    resolution = Column(Text, nullable=True, comment="解决方案")
+    conflict_detail = Column(Text, nullable=False, comment="冲突详情")
+    status = Column(Enum(ConflictStatus), nullable=False, default=ConflictStatus.PENDING, comment="冲突状态")
 
     created_at = Column(
         DateTime, default=datetime.now(timezone.utc), comment="创建时间"
@@ -430,6 +430,55 @@ class FineGrainedFeedConflict(Base, SerializableMixin):
 
     def __repr__(self):
         return f"<FineGrainedFeedConflict {self.id}>"
+
+
+class FROverallUpdateLog(Base, SerializableMixin):
+    """FR 相关所有信息变动日志（包含 fr 内在字段和 feed 变动）"""
+
+    __tablename__ = "fr_overall_update_log"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fr_id = Column(
+        Integer,
+        ForeignKey("figure_and_relation.id"),
+        nullable=False,
+        comment="关联的 FigureAndRelation ID",
+    )
+    figure_and_relation = relationship(
+        "FigureAndRelation",
+        backref="fr_overall_update_logs",
+        lazy="select",
+    )
+
+    update_field_or_sub_dimension = Column(
+        String(128),
+        nullable=False,
+        default="",
+        comment="变动字段（fr 内在字段变动）或子维度（feed 变动）",
+    )
+    update_dimension = Column(
+        Enum(FineGrainedFeedDimension),
+        nullable=True,
+        comment="变动维度（只有 feed 变动时存在）",
+    )
+    old_value = Column(
+        Text,
+        nullable=True,
+        comment="变动前的值",
+    )
+    new_value = Column(
+        Text,
+        nullable=True,
+        comment="变动后的值",
+    )
+
+    created_at = Column(
+        DateTime,
+        default=datetime.now(timezone.utc),
+        comment="变动时间",
+    )
+
+    def __repr__(self):
+        return f"<FROverallUpdateLog {self.id}>"
 
 
 class Knowledge(Base, SerializableMixin):

@@ -5,6 +5,7 @@ import logging
 from src.agents.graphs.FRBuildingGraph.nodes import (
     nodeExtractFRIntrinsicCandidates,
     nodeLoadFR,
+    nodePersistFRIntrinsicUpdate,
     nodePersistOriginalSource,
     nodePreprocessInput,
 )
@@ -28,12 +29,15 @@ def buildFRBuildingGraph() -> CompiledStateGraph:
     graph.add_node("nodePreprocessInput", nodePreprocessInput)
     graph.add_node("nodePersistOriginalSource", nodePersistOriginalSource)
     graph.add_node("nodeExtractFRIntrinsicCandidates", nodeExtractFRIntrinsicCandidates)
+    graph.add_node("nodePersistFRIntrinsicUpdate", nodePersistFRIntrinsicUpdate)
 
     graph.add_edge(START, "nodeLoadFR")
     graph.add_edge("nodeLoadFR", "nodePreprocessInput")
     graph.add_edge("nodePreprocessInput", "nodePersistOriginalSource")
+    # todo：链路并行
     graph.add_edge("nodePersistOriginalSource", "nodeExtractFRIntrinsicCandidates")
-    graph.add_edge("nodeExtractFRIntrinsicCandidates", END)
+    graph.add_edge("nodeExtractFRIntrinsicCandidates", "nodePersistFRIntrinsicUpdate")
+    graph.add_edge("nodePersistFRIntrinsicUpdate", END)
 
     return graph.compile()
 

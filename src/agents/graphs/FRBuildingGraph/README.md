@@ -39,7 +39,7 @@
     5.3 对于每个抽取的字段，和 FigureAndRelation 中现有值进行对比：
         - 若现有值为空，直接更新
         - 若新值是现有值的补充，合并到现有值中
-        - 若新值与现有值存在矛盾，按照 recipe/conflict_handle 中的规则进行更新
+        - 若新值与现有值存在矛盾，更新为新值
     方法：src/services/figure_and_relation.py updateFigureAndRelation
 6. 添加 / 更新 FineGrainedFeed 细粒度信息
    6.1 根据当前 figure_role 阅读 recipe/by_role/{figure_role} 的策略
@@ -55,7 +55,7 @@
             - 若二者无关，continue 跳过
             - 若新 content 是召回 fine_grained_feed.content 的补充，合并到召回 fine_grained_feed.content 中，使用方法：src/services/fine_grained_feed.py updateFineGrainedFeed；设置 flag 为 True，之后 break 跳出循环
             - 若新 content 与召回 fine_grained_feed.content 存在矛盾，按照 recipe/conflict_handle 中的规则进行更新，使用方法：src/services/fine_grained_feed.py updateFineGrainedFeed；设置 flag 为 True，之后 break 跳出循环
-        6.3.3 若 flag 扔为 False，说明当前抽取的信息 content 与召回 fine_grained_feed.content 无关，直接添加到 FineGrainedFeed 表中
+        6.3.3 若 flag 仍为 False，说明当前抽取的信息 content 与召回 fine_grained_feed.content 无关，直接添加到 FineGrainedFeed 表中
             方法：src/services/fine_grained_feed.py addFineGrainedFeed
 7. 记录日志
 8. graph 完成，返回日志

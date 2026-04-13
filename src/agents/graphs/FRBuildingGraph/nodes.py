@@ -19,9 +19,14 @@ from src.services.figure_and_relation import (
     fr_allowed_fields,
     fr_list_fields,
     fr_string_fields,
+    updateFigureAndRelation,
 )
 from src.services.fine_grained_feed import addOriginalSource
-from src.utils.index import checkFigureAndRelationOwnership, cleanList, normalizeText
+from src.utils.index import (
+    checkFigureAndRelationOwnership,
+    cleanList,
+    normalizeText,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -463,3 +468,66 @@ async def nodePlanFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
     ]
 
     return {"fr_intrinsic_updates": planned_updates, "warnings": warnings, "logs": logs}
+
+
+def nodePersistFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
+    """
+    FR 内在字段更新落库
+    """
+    request = state["request"]
+    warnings = state.get("warnings") or []
+    logs = state.get("logs") or []
+    fr_intrinsic_updates = state.get("fr_intrinsic_updates") or {}
+
+    if not isinstance(fr_intrinsic_updates, dict) or len(fr_intrinsic_updates) == 0:
+        logs += [
+            {
+                "step": "nodePersistFRIntrinsicUpdate",
+                "status": "skip",
+                "detail": "No FR intrinsic updates to persist",
+                "data": {},
+            }
+        ]
+        return {
+            "fr_update_result": {"status": 200, "message": "No FR intrinsic updates"},
+            "warnings": warnings,
+            "logs": logs,
+        }
+
+    res = updateFigureAndRelation(
+        user_id=request["user_id"],
+        fr_id=request["fr_id"],
+        fr_body=fr_intrinsic_updates,
+    )
+    if res.get("status") != 200:
+        logger.error(res.get("message", "Update FigureAndRelation failed"))
+        raise ValueError(res.get("message", "Update FigureAndRelation failed"))
+
+    figure_and_relation = dict(state.get("figure_and_relation") or {})
+    figure_and_relation.update(fr_intrinsic_updates)
+
+    logs += [
+        {
+            "step": "nodePersistFRIntrinsicUpdate",
+            "status": "ok",
+            "detail": "FR intrinsic updates persisted",
+            "data": {
+                "service_status": res.get("status"),
+                "service_message": res.get("message"),
+                "updated_fields": sorted(fr_intrinsic_updates.keys()),
+                "updated_count": len(fr_intrinsic_updates),
+            },
+        }
+    ]
+
+    return {
+        "fr_update_result": {
+            "status": res.get("status"),
+            "message": res.get("message"),
+            "updated_fields": sorted(fr_intrinsic_updates.keys()),
+            "updated_count": len(fr_intrinsic_updates),
+        },
+        "figure_and_relation": figure_and_relation,
+        "warnings": warnings,
+        "logs": logs,
+    }
