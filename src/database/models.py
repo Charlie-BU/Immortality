@@ -416,6 +416,8 @@ class FineGrainedFeedConflict(Base, SerializableMixin):
         nullable=False,
         comment="冲突的细粒度信息ID列表",
     )
+    old_value = Column(Text, nullable=False, comment="原有值")
+    new_value = Column(Text, nullable=False, comment="新值")
     conflict_detail = Column(Text, nullable=False, comment="冲突详情")
     status = Column(
         Enum(ConflictStatus),

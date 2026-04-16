@@ -70,6 +70,7 @@ async def _compareFieldViaLLM(
         raise ValueError("LLM response is not valid JSON")
 
     return {
+        "tag": parsed_res.get("tag"),
         "final_value": parsed_res.get("final_value"),
         "conflict_status": parseEnum(ConflictStatus, parsed_res.get("conflict_status")),
         "detail": parsed_res.get("detail"),
@@ -613,3 +614,6 @@ def nodePersistFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
         "warnings": warnings,
         "logs": logs,
     }
+
+
+# 步骤 6

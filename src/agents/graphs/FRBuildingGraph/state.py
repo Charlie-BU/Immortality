@@ -79,7 +79,6 @@ class FRBuildingGraphState(TypedDict, total=False):
     conflict_recipe_path: str
     original_source: OriginalSourceTemp
     original_source_id: int
-    # original_source: dict[str, Any]
     fr_intrinsic_updates: FRIntrinsicUpdates
     fr_update_result: dict[str, Any]
     extracted_feeds: list[ExtractedFineGrainedFeed]

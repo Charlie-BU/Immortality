@@ -42,20 +42,22 @@
         - 若新值与现有值存在矛盾，更新为新值
     方法：src/services/figure_and_relation.py updateFigureAndRelation
 6. 添加 / 更新 FineGrainedFeed 细粒度信息
-   6.1 根据当前 figure_role 阅读 recipe/by_role/{figure_role} 的策略
-   6.2 根据当前 figure_role 的特定维度规则，并行抽取各个维度信息。抽取后的每条信息格式如下：
+   6.1 根据当前 figure_role 取到相应的 prompt：`await getPrompt(os.getenv(f"FR_BUILDING_{figure_role.value.upper()}"))`
+   6.2 根据当前 original_source.included_dimensions 中的维度，分别取到相应的 prompt：`await getPrompt(os.getenv(f"FR_BUILDING_{included_dimension.upper()}"))`
+   6.3 根据 6.1 和 6.2 中的 prompt 组合，并行抽取各个维度信息。抽取后的每条信息格式如下：
    {
       "dimension": FineGrainedFeedDimension
       "sub_dimension": str
       "content": str
    }
-   6.3 对于每条抽取的信息
-        6.3.1 使用其 content 作为 query 在 FineGrainedFeed 中召回，top-k 取 3-5（需测试，取决于响应速度），召回方法：src/services/fine_grained_feed.py recallFineGrainedFeeds
-        6.3.2 遍历每条召回的 fine_grained_feed.content，与当前抽取的信息 content 进行对比，设置 flag 为 False
-            - 若二者无关，continue 跳过
-            - 若新 content 是召回 fine_grained_feed.content 的补充，合并到召回 fine_grained_feed.content 中，使用方法：src/services/fine_grained_feed.py updateFineGrainedFeed；设置 flag 为 True，之后 break 跳出循环
-            - 若新 content 与召回 fine_grained_feed.content 存在矛盾，按照 recipe/conflict_handle 中的规则进行更新，使用方法：src/services/fine_grained_feed.py updateFineGrainedFeed；设置 flag 为 True，之后 break 跳出循环
-        6.3.3 若 flag 仍为 False，说明当前抽取的信息 content 与召回 fine_grained_feed.content 无关，直接添加到 FineGrainedFeed 表中
+   6.4 遍历每条抽取的信息
+        6.4.1 使用其 content 作为 query 在 FineGrainedFeed 中召回相应维度的 fine_grained_feed，top-k 取 3-5（需测试，取决于响应速度），召回方法：src/services/fine_grained_feed.py recallFineGrainedFeeds
+        6.4.2 遍历每条召回的 fine_grained_feed.content，使用方法 `_compareFieldViaLLM()` 与当前抽取的信息 content 进行对比，设置 handled_flag 为 False
+            - 若二者无关（tag = "irrelevant"），continue 跳过
+            - 若新 content 与召回 fine_grained_feed.content 相同（tag = "equivalent"），设置 handled_flag 为 True，break 跳出循环
+            - 若新 content 是召回 fine_grained_feed.content 的补充（tag = "supplementary"），或判定使用新内容（tag = "new_adopted"），则将合并后的内容 final_value 更新到召回 fine_grained_feed.content 中，使用方法：src/services/fine_grained_feed.py updateFineGrainedFeed；设置 handled_flag 为 True，之后 break 跳出循环
+            - 若新 content 与召回 fine_grained_feed.content 存在矛盾（tag = "conflictive"），**触发一次 interrupt**，待用户决定采用新内容还是召回内容。之后根据用户的选择确定是否更新。若更新，使用方法：src/services/fine_grained_feed.py updateFineGrainedFeed；设置 handled_flag 为 True，之后 break 跳出循环
+        6.4.3 若 handled_flag 仍为 False，说明当前抽取的信息 content 与召回 fine_grained_feed.content 无关，直接添加到 FineGrainedFeed 表中
             方法：src/services/fine_grained_feed.py addFineGrainedFeed
 7. 记录日志
 8. graph 完成，返回日志

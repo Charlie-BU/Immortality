@@ -49,65 +49,126 @@ C. Completeness self-check: output `coverage_check` to confirm no key informatio
 - `memory`: life events, stories, time markers, milestones, shared experiences
 - `other`: content that cannot be reliably mapped to any category above
 
-#### Dimension Decision
+#### High-Recall Classification Workflow (must follow)
+
+1. Split `cleaned_content` into semantic segments first (each segment = one coherent idea/event/method block).
+2. For each segment, evaluate **all four** dimensions independently (`personality`, `interaction_style`, `procedural_info`, `memory`), then take the union.
+3. Apply role-aware recall checks (below) to avoid under-tagging in role-specific scenarios.
+4. Merge all matched dimensions across segments into final `included_dimensions`.
+5. Add `other` only when no segment matches any of the four dimensions with confidence.
+
+Never do single-pass "pick one best label" classification. Multi-label is mandatory whenever supported by text.
+
+#### Dimension Decision (expanded)
 
 ##### A. `personality`
 
-Tag when the segment describes relatively stable inner orientation or tendency, such as:
+Tag when text contains relatively stable orientation or recurring tendency:
 
 - value priorities (e.g., fairness over speed, safety first)
-- long-term preferences/dislikes
-- recurring motivation/avoidance pattern
-- explicit personal boundaries or principles
+- long-term likes/dislikes and stable motivation/avoidance patterns
+- explicit principles, non-negotiable boundaries, taboo lines
+- emotional pattern as trait-level tendency (not one-off mood)
+- social preference pattern (distance/frequency/depth, role in groups)
+- self-description vs others' description gap
 
-Do **not** tag `personality` for a one-off action unless the text explicitly states it as a stable pattern/value.
+Do **not** tag `personality` for one-off actions unless text explicitly frames them as stable pattern/value.
 
 ##### B. `interaction_style`
 
-Tag when the segment describes **how the person communicates or reacts to others**, such as:
+Tag when text describes **how the person communicates/reacts to others**:
 
-- tone, wording style, directness, politeness, emotional expression style
-- how they ask questions, challenge, refuse, negotiate, give feedback
-- behavior in disagreement/conflict situations
-- channel/response rhythm if framed as communication habit
+- default communication style (length, structure, channel, response rhythm)
+- wording/tone style (directness, politeness, humor, intensity shifts)
+- question/pushback/challenge/refusal/negotiation/feedback behavior
+- conflict handling under ambiguity, missing docs, cross-team friction
+- communication gotchas: explicit "won't do this way" interaction boundaries
+- in close relationships: emotional interaction patterns and relationship dynamics
+
+If a segment is about expression/response behavior under condition X, tag `interaction_style`.
 
 ##### C. `procedural_info`
 
-Tag when the segment provides actionable “how to do” knowledge, such as:
+Tag when text contains actionable "how to do" pattern tied to this figure:
 
-- explicit steps, workflow, checklist, sequence
-- tool/stack/environment usage tied to that person’s method
-- acceptance criteria, quality bar, delivery standard
-- decision process (“because X, choose Y”), escalation boundaries
+- explicit steps, workflow, checklist, sequence, playbook
+- tools/stack/environment/platform/terminology used by this figure
+- acceptance standards, delivery criteria, quality bar, rollback/monitoring habits
+- decision logic ("because X, choose Y"), escalation boundaries
+- repeated correction patterns and anti-pattern gotchas ("don't do this")
 
-Do **not** tag `procedural_info` for generic industry common sense unless text ties it to this person’s own practice.
+Do **not** tag `procedural_info` for generic industry common sense unless tied to this figure's actual practice.
 
 ##### D. `memory`
 
-Tag when the segment is about experiences/events with temporal or narrative context, such as:
+Tag when text contains narrative/time-context experiences:
 
-- specific life/work events, turning points, incidents
-- time nodes (year, period, before/after, phase)
-- repeatedly told stories, shared memories, contextual episodes
+- specific events/incidents/turning points (life or work)
+- explicit or implicit time markers (year/period/before-after/phase)
+- repeatedly told stories, shared memories, internal jokes/rituals
+- emotional map around memories (fondly mentioned topics, avoided topics)
+- era/environment imprint on worldview
+
+If a segment is story/event-centered with temporal context, tag `memory` even if brief.
 
 ##### E. `other`
 
-Use only if none of the above can be assigned with confidence, including:
+Use only when none of the four dimensions can be assigned confidently:
 
-- pure metadata/noise (IDs, links, boilerplate without semantic content)
-- vague statements with no clear personality/interaction/procedure/memory signal
-- content outside task scope that cannot be mapped reliably
+- pure metadata/noise (IDs, links, boilerplate with no semantic signal)
+- vague statements with no clear personality/interaction/procedure/memory meaning
+- content outside scope that cannot be reliably mapped
 
-#### Rules
+If any one of the four dimensions matches, `other` must be excluded.
 
-- Classify by **information type in the text itself**, not by what you guess the figure "is like".
-- A segment can belong to **multiple dimensions** if it contains multiple information types.
-- `included_dimensions` MUST include **all** matched dimensions; never force single-label.
-- Typical co-occurrence:
-    - event + method => `memory` + `procedural_info`
-    - value + communication behavior => `personality` + `interaction_style`
-    - event + value reflection => `memory` + `personality`
-- If any matched dimension exists, do **not** add `other`.
+#### Role-Aware Recall Rules (coverage first, then precision)
+
+Role affects **expected hotspots**, not hard exclusion.  
+If textual evidence exists, always tag; do not suppress a matched dimension because of role.
+
+- `SELF`:
+    - High likelihood of all four dimensions.
+    - Pay extra attention to life decisions, personal systems, creative/workflow habits, self-reflection over time.
+
+- `COLLEAGUE`:
+    - Prioritize recall for `procedural_info` + `interaction_style`.
+    - `personality` should be work-related value tendencies and stress/decision style.
+    - `memory` usually low-priority, but must be tagged when work events/milestones/incidents are present.
+
+- `MENTOR`:
+    - Prioritize `interaction_style` (teaching/feedback style) + `personality` (teaching principles) + `procedural_info` (method/path).
+    - Tag `memory` when mentor stories/career turning points are explicitly mentioned.
+
+- `FAMILY` / `FRIEND` / `PARTNER`:
+    - Prioritize `interaction_style` + `memory` + `personality`.
+    - `procedural_info` is optional but must be tagged if there is explicit skill transfer or repeatable methods.
+    - For `PARTNER`, relationship rhythm/conflict-repair signals strongly indicate `interaction_style`; shared timeline events strongly indicate `memory`.
+
+- `PUBLIC_FIGURE`:
+    - Only classify based on public-material content itself.
+    - Often includes `interaction_style` (public Q&A/replies), `personality` (publicly stated principles), `procedural_info` (published methodology), `memory` (publicly shared life events).
+    - Do not infer private traits beyond textual evidence.
+
+- `STRANGER`:
+    - No role prior; rely fully on text signals.
+    - Keep high recall by checking all four dimensions before falling back to `other`.
+
+#### Co-occurrence and Boundary Rules
+
+- event + method/process => `memory` + `procedural_info`
+- value/principle + communication behavior => `personality` + `interaction_style`
+- event + reflection/lesson => `memory` + `personality`
+- communication behavior + tool/decision checklist => `interaction_style` + `procedural_info`
+- relationship episode + response pattern => `memory` + `interaction_style`
+
+Classify by **information type in text**, not by source type label or guess of the person.
+
+#### Anti-Miss Checklist (must pass before output)
+
+- Did you evaluate all four dimensions for each segment (instead of one-label shortcut)?
+- Did you include role-expected hotspots for the given `figure_role`?
+- Did you preserve multi-label co-occurrence where present?
+- Did you avoid adding `other` when any real dimension is already matched?
 
 ### 4. Approximate Date Rule
 

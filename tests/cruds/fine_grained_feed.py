@@ -4,7 +4,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from src.database.enums import FineGrainedFeedConfidence, FineGrainedFeedDimension, OriginalSourceType
+from src.database.enums import (
+    ConflictStatus,
+    FineGrainedFeedConfidence,
+    FineGrainedFeedDimension,
+    OriginalSourceType,
+)
 from src.services.fine_grained_feed import (
     addFineGrainedFeed,
     addFineGrainedFeedConflict,
@@ -183,8 +188,9 @@ def testAddFineGrainedFeedConflict(fr_id: int, feed_ids: list[int]):
         fr_id=fr_id,
         dimension=FineGrainedFeedDimension.PERSONALITY,
         feed_ids=feed_ids,
-        description="同一人物在不同时间表现出外向与内向两种明显特征。",
-        resolved=False,
+        old_value="她在多数社交场景中主动主导对话，外向且高能量。",
+        new_value="她在陌生社交场景里通常更沉默，先观察再发言。",
+        conflict_detail="同一人物在社交主动性上出现明显冲突：一处描述为持续外向主导，另一处描述为陌生场景下偏内向观察。",
     )
     return res
 
@@ -205,6 +211,7 @@ def testResolveFineGrainedFeedConflict(fr_id: int, fine_grained_feed_conflict_id
         user_id=1,
         fr_id=fr_id,
         fine_grained_feed_conflict_id=fine_grained_feed_conflict_id,
+        status=ConflictStatus.RESOLVED_KEEP_NEW,
     )
     return res
 

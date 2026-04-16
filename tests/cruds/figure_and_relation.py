@@ -13,9 +13,9 @@ from src.services.figure_and_relation import (
 def testAddFigureAndRelation():
     res = addFigureAndRelation(
         user_id=1,
-        figure_name="冶杰慧",
-        figure_gender=Gender.FEMALE,
-        figure_role=FigureRole.FAMILY,
+        figure_name="卜天（Charlie. BU）",
+        figure_gender=Gender.MALE,
+        figure_role=FigureRole.SELF,
         figure_mbti=MBTI.ENTJ,
     )
     return res
@@ -70,5 +70,5 @@ async def testGetFRAllContext(query: str | None = None):
 
 
 if __name__ == "__main__":
-    # print("testAddFigureAndRelation:", testAddFigureAndRelation())
-    print("testGetFRAllContext:", asyncio.run(testGetFRAllContext("社交")))
+    print("testAddFigureAndRelation:", testAddFigureAndRelation())
+    # print("testGetFRAllContext:", asyncio.run(testGetFRAllContext("社交")))

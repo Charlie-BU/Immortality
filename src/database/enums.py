@@ -121,10 +121,12 @@ class AnalysisType(enum.Enum):
     NARRATIVE = "narrative"  # 自然语言叙述分析
 
 
-def parseEnum(enum_cls, value: str) -> enum.Enum:
+def parseEnum(enum_cls, value: str | None) -> enum.Enum | None:
     """
     解析枚举键 / 值，返回枚举实例
     """
+    if value is None:
+        return None
     if value in enum_cls.__members__:  # value为枚举键
         return enum_cls[value]
     return enum_cls(value)  # value为枚举值
