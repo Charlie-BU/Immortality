@@ -35,5 +35,5 @@ def testUserBindLark():
 
 
 if __name__ == "__main__":
-    print(testUserRegister())
+    print(testUserLogin())
    
