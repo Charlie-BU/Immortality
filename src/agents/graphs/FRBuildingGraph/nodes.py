@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import os
-import pprint
 from typing import List, Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -117,6 +116,7 @@ def nodeLoadFR(state: FRBuildingGraphState) -> dict:
                 },
             }
         ]
+        logger.info("nodeLoadFR executed finished\n")
         return {
             "figure_and_relation": figure_and_relation.toJson(),
             "figure_role": parseEnum(FigureRole, figure_and_relation.figure_role),
@@ -151,12 +151,12 @@ async def nodePreprocessInput(state: FRBuildingGraphState) -> dict:
 
     # LLM 预处理
     llm = prepareLLM(
-        "DOUBAO_2_0_MINI",
+        "DOUBAO_2_0_LITE",
         options={
             "temperature": 0,
-            "reasoning_effort": "low",
+            "reasoning_effort": "minimal",
         },
-    )
+    )   # todo：参数 TBD
     FR_BUILDING_PREPROCESS = await getPrompt(os.getenv("FR_BUILDING_PREPROCESS"))
     # 提示词兜底
     if not FR_BUILDING_PREPROCESS:
@@ -176,6 +176,7 @@ async def nodePreprocessInput(state: FRBuildingGraphState) -> dict:
         HumanMessage(content=user_prompt),
     ]
     response = await llm.ainvoke(messages)
+    print(f"\n{response.content}\n")
     try:
         parsed_res = json.loads(response.content)
     except json.JSONDecodeError:
@@ -230,6 +231,7 @@ async def nodePreprocessInput(state: FRBuildingGraphState) -> dict:
         }
     ]
 
+    logger.info("nodePreprocessInput executed finished\n")
     return {
         "original_source": original_source,
         "warnings": warnings,
@@ -270,6 +272,7 @@ def nodePersistOriginalSource(state: FRBuildingGraphState) -> dict:
         }
     ]
 
+    logger.info("nodePersistOriginalSource executed finished\n")
     return {
         "original_source_id": original_source_id,
         "warnings": warnings,
@@ -403,6 +406,7 @@ async def nodeExtractFRIntrinsicCandidates(state: FRBuildingGraphState) -> dict:
     logger.info(
         f"fr_intrinsic_updates: \n{json.dumps(fr_intrinsic_updates, ensure_ascii=False, indent=2, default=jsonDefault)}\n"
     )
+    logger.info("nodeExtractFRIntrinsicCandidates executed finished\n")
     return {
         "fr_intrinsic_updates": fr_intrinsic_updates,
         "warnings": warnings,
@@ -429,6 +433,7 @@ async def nodePlanFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
                 "data": {},
             }
         ]
+        logger.info("nodePlanFRIntrinsicUpdate executed finished\n")
         return {"fr_intrinsic_updates": {}, "warnings": warnings, "logs": logs}
 
     def _normalizeMBTI(value: MBTI | str) -> MBTI | None:
@@ -570,6 +575,7 @@ async def nodePlanFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
         }
     ]
 
+    logger.info("nodePlanFRIntrinsicUpdate executed finished\n")
     return {"fr_intrinsic_updates": planned_updates, "warnings": warnings, "logs": logs}
 
 
@@ -592,6 +598,7 @@ def nodePersistFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
                 "data": {},
             }
         ]
+        logger.info("nodePersistFRIntrinsicUpdate executed finished\n")
         return {
             "fr_update_result": {"status": 200, "message": "No FR intrinsic updates"},
             "warnings": warnings,
@@ -624,6 +631,7 @@ def nodePersistFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
         }
     ]
 
+    logger.info("nodePersistFRIntrinsicUpdate executed finished\n")
     return {
         "fr_update_result": {
             "status": res.get("status"),
@@ -683,6 +691,7 @@ async def nodeExtractFineGrainedFeeds(state: FRBuildingGraphState) -> dict:
         warning = "No dimensions to extract"
         logger.warning(warning)
         warnings = warnings + [warning]
+        logger.info("nodeExtractFineGrainedFeeds executed finished\n")
         return {"warnings": warnings, "logs": logs}
 
     dimension_prompt_pair = []
@@ -797,6 +806,7 @@ async def nodeExtractFineGrainedFeeds(state: FRBuildingGraphState) -> dict:
         }
     ]
 
+    logger.info("nodeExtractFineGrainedFeeds executed finished\n")
     return {
         "extracted_feeds": extracted_feeds,
         "warnings": warnings,
@@ -829,6 +839,7 @@ async def nodePlanFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
                 "data": {},
             }
         ]
+        logger.info("nodePlanFineGrainedFeedUpsert executed finished\n")
         return {
             "feed_upsert_plan": [],
             "warnings": warnings,
@@ -994,6 +1005,7 @@ async def nodePlanFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
     logger.info(
         f"feed_upsert_plan: \n{json.dumps(feed_upsert_plan, ensure_ascii=False, indent=2, default=jsonDefault)}\n"
     )
+    logger.info("nodePlanFineGrainedFeedUpsert executed finished\n")
     return {
         "feed_upsert_plan": feed_upsert_plan,
         "warnings": warnings,
@@ -1030,6 +1042,7 @@ async def nodePersistFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
                 "data": {},
             }
         ]
+        logger.info("nodePersistFineGrainedFeedUpsert executed finished\n")
         return {
             "feed_upsert_results": [],
             "warnings": warnings,
@@ -1216,6 +1229,7 @@ async def nodePersistFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
         }
     ]
 
+    logger.info("nodePersistFineGrainedFeedUpsert executed finished\n")
     return {
         "feed_upsert_results": feed_upsert_results,
         "warnings": warnings,
@@ -1267,6 +1281,7 @@ def nodeBuildFRBuildingGraphOutput(
         }
     ]
 
+    logger.info("nodeBuildFRBuildingGraphOutput executed finished\n")
     return {
         "status": status,
         "message": message,
@@ -1365,6 +1380,7 @@ async def nodeGenerateFRBuildingReport(
     ]
     logger.info(f"report_markdown: \n{report_markdown}\n")
 
+    logger.info("nodeGenerateFRBuildingReport executed finished\n")
     return {
         "fr_building_report": report_markdown,
         "warnings": warnings,

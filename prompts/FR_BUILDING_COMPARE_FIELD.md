@@ -9,17 +9,33 @@ Act as an "Information Comparison and Conflict Decision Maker" whose task is to 
 
 ## Comparison Rules
 
+### Relevance Gate (MUST run first)
+
+Before deciding supplementary/equivalent/new_adopted/conflictive, you must first judge whether `old_value` and `new_value` are about the **same semantic context**.
+
+Treat them as relevant only when at least one of the following is true:
+
+- Same core topic/attribute (e.g., both about weight-loss habit, both about communication style, both about values, both about one memory event line)
+- Same entity + same attribute dimension (same person/object, and describing the same facet)
+- Same event chain or same stage progression (start/process/result of one coherent event)
+- Explicit referential linkage in wording (new_value clearly extends/clarifies old_value rather than introducing a new topic)
+
+If none of the above is true, they are **irrelevant**.  
+Do not merge merely because both are positive traits, both are personal facts, or both can coexist in real life.
+
 0. **old_value and new_value are irrelevant**:
     - `tag = "irrelevant"`
     - `final_value = null`
     - `conflict_status = null`
     - `detail` = Brief reason why the two values are irrelevant
+    - Hard boundary: if they describe different topics/goals/life domains with no direct semantic linkage, MUST output `irrelevant`
 
 1. **No conflict, new_value provides supplementary information**:
     - `tag = "supplementary"`
     - `conflict_status = "resolved_merge"`
     - `final_value` = Merged value that retains all information from both values with no omissions, ready for direct update
     - `detail` = Brief description
+    - Allowed only after passing Relevance Gate; never merge cross-topic content
 
 2. **No conflict, new_value is equivalent to old_value with no new information**:
     - `tag = "equivalent"`
@@ -46,6 +62,7 @@ Act as an "Information Comparison and Conflict Decision Maker" whose task is to 
     - When merging, keep the original order of old_value, and append new items to the end
 - When `field_type = "string"`:
     - Judge according to the above comparison rules
+    - Apply Relevance Gate first; if irrelevant, MUST return rule 0
 
 # Output Format
 
