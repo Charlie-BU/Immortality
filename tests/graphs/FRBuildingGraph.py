@@ -78,7 +78,7 @@ async def main():
         "request": {
             "user_id": 1,
             "fr_id": 2,
-            "raw_content": myself_narratives[2],
+            "raw_content": myself_narratives[1],
             # "raw_images": [],
         },
     }

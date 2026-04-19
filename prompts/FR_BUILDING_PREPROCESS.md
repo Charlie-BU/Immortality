@@ -85,41 +85,49 @@ Role-aware recall hints (do not suppress evidence-based labels):
 
 ### 5) original_source_type (single label, strict priority)
 
-Priority-1 (must apply first):
+Classify the original source type of given content following strict unique matching rules, based on figure_role and the content perspective of cleaned_content. The core principle is: first determine "who wrote/said this content", then determine "content form".
 
-- If content is user narration/paraphrase/summary/evaluation of the figure, output `NARRATIVE_FROM_USER` immediately.
-- If not clearly original content authored/spoken by the figure, fallback to `NARRATIVE_FROM_USER`.
+#### Steps
 
-Only when clearly original output from the figure, choose one:
-
-- `COLLEAGUE` / `MENTOR`:
-    - `WORK_RELATION_LONG_FORM`
-    - `WORK_RELATION_EDIT_TRACE`
-    - `WORK_RELATION_GUIDANCE`
-    - `WORK_RELATION_ARTIFACT`
-- `FAMILY` / `FRIEND` / `PARTNER`:
-    - `CLOSE_RELATION_LONG_FORM`
-    - `CLOSE_RELATION_PRIVATE_CHAT`
-    - `CLOSE_RELATION_SOCIAL_EXPRESSION`
-    - `CLOSE_RELATION_ARTIFACT`
-- `SELF`:
-    - `SELF_LONG_FORM`
-    - `SELF_CHAT_MESSAGE`
-    - `SELF_SOCIAL_EXPRESSION`
-    - `SELF_ARTIFACT`
-- `PUBLIC_FIGURE`:
-    - `PUBLIC_FIGURE_ARTICLE_BLOG`
-    - `PUBLIC_FIGURE_INTERVIEW_SPEECH_TRANSCRIPT`
-    - `PUBLIC_FIGURE_SOCIAL_EXPRESSION`
-    - `PUBLIC_FIGURE_NEWS_REPORT`
-    - `PUBLIC_FIGURE_ARTIFACT`
+1. First, perform the highest priority source perspective judgment:
+    - If the content is the user describing the person/relationship/event (even if detailed and long), always classify as `NARRATIVE_FROM_USER` and end the judgment. This applies to:
+        - Content that begins with words like "I think / he is / she usually / we used to / he once..."
+        - Content that is paraphrase, summary, evaluation, memory, not original output
+        - Content that includes quotes of the other person's words embedded in the user's narration, not original records
+        - Any content that is not the original text written by the figure personally, even if it has a complete structure similar to an article
+    - Only proceed to the next step of detailed classification if the content is original output directly produced by the figure personally. This requires meeting at least one of the following:
+        - Explicitly first-person original text (not user paraphrase)
+        - Explicitly chat screenshot/chat text (not paraphrase)
+        - Explicitly original carrier content such as documents, articles, code
+2. If the content is confirmed to be original output from the figure, classify into the unique matching type based on figure_role and content form:
+    - **When figure_role = COLLEAGUE / MENTOR (work relationship):**
+        - `WORK_RELATION_LONG_FORM`: Complete long text written by the figure personally, e.g. design documents, technical solutions, review reports, oncall records; features strong structure (complete titles/paragraphs/logic)
+        - `WORK_RELATION_EDIT_TRACE`: The figure's modification traces on others' content, e.g. code review comments, document annotations, inline comments; features fragmented, comments on specific content
+        - `WORK_RELATION_GUIDANCE`: Guidance content from the figure to you/others, e.g. mentoring records, instructive statements (not casual chat); features clear intention to "teach/guide/advise"
+        - `WORK_RELATION_ARTIFACT`: The output artifact of the figure, e.g. code, design drafts, configuration files; features primarily non-natural language or strong tool attributes
+    - **When figure_role = FAMILY / FRIEND / PARTNER (close relationship):**
+        - `CLOSE_RELATION_LONG_FORM`: Long text written by the figure, e.g. letters, long messages, articles; features continuous expression, complete emotional or opinion expansion
+        - `CLOSE_RELATION_PRIVATE_CHAT`: Original private chat records, e.g. WeChat/SMS conversations; features conversational structure (you say one sentence, I say one sentence)
+        - `CLOSE_RELATION_SOCIAL_EXPRESSION`: Public expression from the figure, e.g. WeChat Moments, social media posts; features intended for public/friend circles
+        - `CLOSE_RELATION_ARTIFACT`: Creative works from the figure, e.g. photos, works, handicrafts (text description of the content is also acceptable)
+    - **When figure_role = SELF (yourself):**
+        - `SELF_LONG_FORM`: Long text written by yourself, e.g. blog/diary/notes
+        - `SELF_CHAT_MESSAGE`: Chat content sent by yourself
+        - `SELF_SOCIAL_EXPRESSION`: Your own public expression on social media
+        - `SELF_ARTIFACT`: Your own creative works, e.g. code/design
+    - **When figure_role = PUBLIC_FIGURE (public figure):**
+        - `PUBLIC_FIGURE_ARTICLE_BLOG`: Articles/blogs published by the figure personally
+        - `PUBLIC_FIGURE_INTERVIEW_SPEECH_TRANSCRIPT`: Text transcripts of interviews or speeches
+        - `PUBLIC_FIGURE_SOCIAL_EXPRESSION`: Social media statements
+        - `PUBLIC_FIGURE_NEWS_REPORT`: Media reports (third-party, not user narration)
+        - `PUBLIC_FIGURE_ARTIFACT`: Creative works, e.g. works/code
 
 ## Output Schema (strict JSON only)
 
 {
 "cleaned_content": "string",
 "metadata": {
-"original_source_type": "string",
+"original_source_type": "NARRATIVE_FROM_USER|WORK_RELATION_LONG_FORM|WORK_RELATION_EDIT_TRACE|WORK_RELATION_GUIDANCE|WORK_RELATION_ARTIFACT|CLOSE_RELATION_LONG_FORM|CLOSE_RELATION_PRIVATE_CHAT|CLOSE_RELATION_SOCIAL_EXPRESSION|CLOSE_RELATION_ARTIFACT|SELF_LONG_FORM|SELF_CHAT_MESSAGE|SELF_SOCIAL_EXPRESSION|SELF_ARTIFACT|PUBLIC_FIGURE_ARTICLE_BLOG|PUBLIC_FIGURE_INTERVIEW_SPEECH_TRANSCRIPT|PUBLIC_FIGURE_SOCIAL_EXPRESSION|PUBLIC_FIGURE_NEWS_REPORT|PUBLIC_FIGURE_ARTIFACT",
 "confidence": "verbatim|artifact|impression",
 "included_dimensions": ["personality|interaction_style|procedural_info|memory|other"],
 "approx_date": "string|null"
