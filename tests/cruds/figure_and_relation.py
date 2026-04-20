@@ -1,4 +1,6 @@
 import asyncio
+import json
+import time
 from src.database.enums import FigureRole, Gender, MBTI
 from src.services.figure_and_relation import (
     addFigureAndRelation,
@@ -65,10 +67,12 @@ def testDeleteFigureAndRelation(fr_id: int):
 
 
 async def testGetFRAllContext(query: str | None = None):
-    res = await getFRAllContext(user_id=1, fr_id=1, query=query)
+    res = await getFRAllContext(user_id=1, fr_id=2, query=query)
     return res
 
 
 if __name__ == "__main__":
-    print("testAddFigureAndRelation:", testAddFigureAndRelation())
-    # print("testGetFRAllContext:", asyncio.run(testGetFRAllContext("社交")))
+    start = time.perf_counter()
+    # print("testAddFigureAndRelation:", testAddFigureAndRelation())
+    print("testGetFRAllContext:", json.dumps(asyncio.run(testGetFRAllContext("语文")), ensure_ascii=False, indent=2))
+    print(f"testGetFRAllContext cost: {time.perf_counter() - start:.4f} s")

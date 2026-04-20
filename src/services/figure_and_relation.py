@@ -526,7 +526,7 @@ def _normalizeTextList(values: list[Any]) -> list[str]:
     return normalized
 
 
-def _buildPersonaMarkdown(fr: FigureAndRelation) -> str:
+def buildFigurePersonaMarkdown(fr: FigureAndRelation) -> str:
     field_map: list[tuple[str, str]] = [
         ("figure_name", "姓名"),
         ("figure_gender", "性别"),
@@ -571,7 +571,7 @@ def _buildPersonaMarkdown(fr: FigureAndRelation) -> str:
     return "\n".join(lines)
 
 
-def _buildRecalledMarkdown(title: str, items: list[dict[str, Any]]) -> str:
+def buildRecalledMarkdown(title: str, items: list[dict[str, Any]]) -> str:
     lines = [f"# {title}"]
     if not items:
         lines.append("- 无召回结果")
@@ -619,7 +619,7 @@ async def getFRAllContext(
         fr = checkFigureAndRelationOwnership(db=db, user_id=user_id, fr_id=fr_id)
         if fr is None:
             return {"status": -4, "message": "FigureAndRelation not found"}
-    persona = _buildPersonaMarkdown(fr)
+    persona = buildFigurePersonaMarkdown(fr)
 
     recalled_map = {
         "recalled_personality": None,
@@ -670,7 +670,7 @@ async def getFRAllContext(
                 }
             items = recall_res.get("items", [])
             recalled_map[conf["result_key"]] = (
-                _buildRecalledMarkdown(title=conf["title"], items=items)
+                buildRecalledMarkdown(title=conf["title"], items=items)
                 if items
                 else None
             )
