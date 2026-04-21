@@ -83,6 +83,9 @@ def _runAsync(coro: Any, timeout_seconds: int = 120) -> Any:
 
 
 def getUserIdByOpenId(open_id: str) -> int | None:
+    """
+    根据飞书 openid 获取用户 id
+    """
     with session() as db:
         user = db.query(User).filter(User.lark_open_id == open_id).first()
         if user is None:
@@ -92,6 +95,9 @@ def getUserIdByOpenId(open_id: str) -> int | None:
 
 
 def frBelongsToUser(user_id: int, fr_id: int) -> bool:
+    """
+    判断 fr 是否属于用户
+    """
     with session() as db:
         fr = db.get(FigureAndRelation, fr_id)
         if fr is None:
@@ -100,6 +106,9 @@ def frBelongsToUser(user_id: int, fr_id: int) -> bool:
 
 
 def sendText2OpenId(open_id: str, text: str) -> None:
+    """
+    发送文本消息到飞书 openid
+    """
     response = sendText(
         _lark_client,
         SendTextRequest(
@@ -114,34 +123,12 @@ def sendText2OpenId(open_id: str, text: str) -> None:
         )
 
 
-def getWaitingSeconds() -> int:
-    raw = (
-        os.getenv("WAITING_SECONDS_FOR_CONVERSATION")
-        or os.getenv("WAITING_SECONDS_FOR_VIRTUAL_FIGURE")
-        or "15"
-    )
-    try:
-        waiting_seconds = int(raw)
-    except ValueError:
-        waiting_seconds = 15
-    return max(waiting_seconds, 1)
-
-
-def normalizeReply(item: Any) -> str | None:
-    if isinstance(item, str):
-        stripped = item.strip()
-        return stripped if stripped else None
-    if isinstance(item, dict):
-        message = item.get("message")
-        if isinstance(message, str):
-            stripped = message.strip()
-            return stripped if stripped else None
-    return None
-
-
 async def processMessages(
     user_id: int, fr_id: int, messages: list[str]
 ) -> tuple[List[str], str]:
+    """
+    调用 ConversationGraph，批量处理本批次消息
+    """
     session_start = time.perf_counter()
     logger.info(f"开始处理本批次消息：{messages}")
 
@@ -165,8 +152,10 @@ async def processMessages(
     return (messages_to_send, reasoning_content)
 
 
-# 取消并删除 open_id 对应的计时器
 def _cancelFlushTimerLocked(open_id: str) -> None:
+    """
+    取消当前计时并删除 open_id 对应的计时器
+    """
     timer = _flush_timer_by_open_id.get(open_id)
     if timer and timer.is_alive():
         timer.cancel()
@@ -174,8 +163,12 @@ def _cancelFlushTimerLocked(open_id: str) -> None:
 
 
 def _sendBatchMessages(open_id: str) -> None:
+    """
+    异步调用 processMessages 处理本批次消息
+    """
     with _state_lock:
         messages_to_process = _pending_messages_by_open_id.pop(open_id, [])
+        # 删除当前计时器
         _flush_timer_by_open_id.pop(open_id, None)
 
     if not messages_to_process:
@@ -215,14 +208,17 @@ def _sendBatchMessages(open_id: str) -> None:
         sendText2OpenId(open_id, "【System】消息处理失败，请稍后重试")
         return
 
-    for item in messages_to_send:
-        text = normalizeReply(item)
-        if text is not None:
-            sendText2OpenId(open_id, text)
+    for msg in messages_to_send:
+        msg = msg.strip()
+        if msg is not None and msg != "":
+            sendText2OpenId(open_id, msg)
 
 
 def _scheduleFlush(open_id: str) -> None:
-    waiting_seconds = getWaitingSeconds()
+    """
+    重置计时器
+    """
+    waiting_seconds = int(os.getenv("WAITING_SECONDS_FOR_CONVERSATION") or "15")
     with _state_lock:
         # 删除 open_id 对应的计时器，重新创建一个新的
         _cancelFlushTimerLocked(open_id)
@@ -236,8 +232,10 @@ def _scheduleFlush(open_id: str) -> None:
         flush_timer.start()
 
 
-# 过滤重复消息
 def filterDuplicatedMessage(message: str, open_id: str) -> bool:
+    """
+    过滤短时间内的完全重复消息
+    """
     current_time = int(time.time())
     second_threshold = (
         10 if message.startswith("/") else 30
@@ -263,6 +261,9 @@ def filterDuplicatedMessage(message: str, open_id: str) -> bool:
 
 
 def messageHandler(message: str, open_id: str) -> None:
+    """
+    消息处理入口
+    """
     if filterDuplicatedMessage(message, open_id):
         return
 
