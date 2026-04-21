@@ -526,7 +526,7 @@ def _normalizeTextList(values: list[Any]) -> list[str]:
     return normalized
 
 
-def _buildPersonaMarkdown(fr: FigureAndRelation) -> str:
+def buildFigurePersonaMarkdown(fr: FigureAndRelation) -> str:
     field_map: list[tuple[str, str]] = [
         ("figure_name", "姓名"),
         ("figure_gender", "性别"),
@@ -571,7 +571,7 @@ def _buildPersonaMarkdown(fr: FigureAndRelation) -> str:
     return "\n".join(lines)
 
 
-def _buildRecalledMarkdown(title: str, items: list[dict[str, Any]]) -> str:
+def buildRecalledMarkdown(title: str, items: list[dict[str, Any]]) -> str:
     lines = [f"# {title}"]
     if not items:
         lines.append("- 无召回结果")
@@ -619,7 +619,7 @@ async def getFRAllContext(
         fr = checkFigureAndRelationOwnership(db=db, user_id=user_id, fr_id=fr_id)
         if fr is None:
             return {"status": -4, "message": "FigureAndRelation not found"}
-    persona = _buildPersonaMarkdown(fr)
+    persona = buildFigurePersonaMarkdown(fr)
 
     recalled_map = {
         "recalled_personality": None,
@@ -660,17 +660,25 @@ async def getFRAllContext(
                 user_id=user_id,
                 fr_id=fr_id,
                 query=normalized_query,
-                top_k=conf["top_k"],
-                scope=[conf["dimension"]],
+                scope=[
+                    {
+                        "scope": conf["dimension"],
+                        "top_k": conf["top_k"],
+                    }
+                ],
             )
             if recall_res.get("status") != 200:
                 return {
                     "status": -5,
                     "message": f"Recall FineGrainedFeed failed: {recall_res.get('message', '')}",
                 }
-            items = recall_res.get("items", [])
+            items = []
+            raw_items = recall_res.get("items", {})
+            if isinstance(raw_items, dict):
+                items = raw_items.get(conf["dimension"].value, [])
+
             recalled_map[conf["result_key"]] = (
-                _buildRecalledMarkdown(title=conf["title"], items=items)
+                buildRecalledMarkdown(title=conf["title"], items=items)
                 if items
                 else None
             )

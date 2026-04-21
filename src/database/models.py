@@ -98,14 +98,14 @@ class User(Base, SerializableMixin):
     username = Column(
         String(64), unique=True, nullable=False, index=True, comment="用户唯一用户名"
     )
-    password = Column(String(128), nullable=False, comment="用户密码")
+    password = Column(Text, nullable=False, comment="用户密码")
     nickname = Column(String(64), nullable=True, index=True, comment="用户昵称")
     gender = Column(Enum(Gender), nullable=False, comment="用户性别")
-    email = Column(String(128), nullable=True, unique=True, comment="用户邮箱")
+    email = Column(Text, nullable=True, unique=True, comment="用户邮箱")
     level = Column(Enum(UserLevel), default=UserLevel.L4, comment="用户等级")
 
     lark_open_id = Column(
-        String(128), nullable=True, unique=True, comment="用户飞书open_id"
+        Text, nullable=True, unique=True, comment="用户飞书open_id"
     )
     created_at = Column(
         DateTime, default=datetime.now(timezone.utc), comment="用户创建时间"
@@ -145,12 +145,12 @@ class FigureAndRelation(Base, SerializableMixin):
     figure_name = Column(String(64), nullable=False, comment="Figure 姓名")
     figure_gender = Column(Enum(Gender), nullable=False, comment="Figure 性别")
     figure_mbti = Column(Enum(MBTI), nullable=True, comment="Figure MBTI 类型")
-    figure_birthday = Column(String(128), nullable=True, comment="Figure 生日")
-    figure_occupation = Column(String(128), nullable=True, comment="Figure 职业")
-    figure_education = Column(String(128), nullable=True, comment="Figure 教育背景")
-    figure_residence = Column(String(128), nullable=True, comment="Figure 常住地")
-    figure_hometown = Column(String(128), nullable=True, comment="Figure 家乡地")
-    figure_appearance = Column(String(128), nullable=True, comment="Figure 外在特征")
+    figure_birthday = Column(Text, nullable=True, comment="Figure 生日")
+    figure_occupation = Column(Text, nullable=True, comment="Figure 职业")
+    figure_education = Column(Text, nullable=True, comment="Figure 教育背景")
+    figure_residence = Column(Text, nullable=True, comment="Figure 常住地")
+    figure_hometown = Column(Text, nullable=True, comment="Figure 家乡地")
+    figure_appearance = Column(Text, nullable=True, comment="Figure 外在特征")
     figure_likes = Column(
         MutableList.as_mutable(ARRAY(Text)),
         nullable=False,
@@ -299,7 +299,7 @@ class FineGrainedFeed(Base, SerializableMixin):
 
     # 向量化
     embedding_model_name = Column(
-        String(128),
+        Text,
         nullable=False,
         comment="Embedding 模型名称",
     )
@@ -452,7 +452,7 @@ class FROverallUpdateLog(Base, SerializableMixin):
     )
 
     update_field_or_sub_dimension = Column(
-        String(128),
+        Text,
         nullable=False,
         default="",
         comment="变动字段（fr 内在字段变动）或子维度（feed 变动）",
@@ -545,7 +545,7 @@ class Knowledge(Base, SerializableMixin):
 
     # 向量化
     embedding_model_name = Column(
-        String(128),
+        Text,
         nullable=False,
         comment="Embedding 模型名称",
     )
