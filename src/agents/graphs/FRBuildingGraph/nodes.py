@@ -505,34 +505,45 @@ async def nodePlanFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
                     {"field": field, "action": ConflictStatus.RESOLVED_KEEP_OLD.value}
                 )
                 continue
-            # 递交模型判断
-            LLM_compare_res = await _compareFieldViaLLM(
-                field_name=field,
-                field_type="list",
-                old_value=json.dumps(existing_list),
-                new_value=json.dumps(new_list),
-            )
-            # 对于 FR 内在字段判断，直接更新，无需考虑冲突落库
-            llm_final_value = LLM_compare_res.get("final_value")
-            final_value = (
-                list(llm_final_value)
-                if isinstance(llm_final_value, list)
-                else existing_list
-            )
-            # 这两个字段有最大长度限制
+
+            final_value = []
+            # 这两个字段不走模型判断，另外有最大长度限制
             if field in ("words_figure2user", "words_user2figure"):
-                final_value = final_value[
+                combined_list = cleanList(existing_list + new_list)
+                final_value = combined_list[
                     : int(os.getenv("MAX_WORDS_TO_AND_FROM_FIGURE", "100"))
                 ]
+                plan_actions.append(
+                    {
+                        "field": field,
+                        "action": ConflictStatus.RESOLVED_MERGE.value,
+                        "detail": "",
+                    }
+                )
+            else:
+                # 递交模型判断
+                LLM_compare_res = await _compareFieldViaLLM(
+                    field_name=field,
+                    field_type="list",
+                    old_value=json.dumps(existing_list),
+                    new_value=json.dumps(new_list),
+                )
+                # 对于 FR 内在字段判断，直接更新，无需考虑冲突落库
+                llm_final_value = LLM_compare_res.get("final_value")
+                final_value = (
+                    list(llm_final_value)
+                    if isinstance(llm_final_value, list)
+                    else existing_list
+                )
+                plan_actions.append(
+                    {
+                        "field": field,
+                        "action": normalizeText(LLM_compare_res.get("conflict_status")),
+                        "detail": LLM_compare_res.get("detail"),
+                    }
+                )
 
             planned_updates[field] = final_value
-            plan_actions.append(
-                {
-                    "field": field,
-                    "action": normalizeText(LLM_compare_res.get("conflict_status")),
-                    "detail": LLM_compare_res.get("detail"),
-                }
-            )
             continue
 
         # string 类型字段
