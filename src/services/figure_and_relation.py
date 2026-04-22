@@ -518,10 +518,14 @@ def getAllFRBuildingGraphReport(
         }
 
 
-def buildFigurePersonaMarkdown(fr: FigureAndRelation) -> str:
+def buildFigurePersonaMarkdown(
+    fr: FigureAndRelation,
+    exclude_fields: list[str] | None = None,
+) -> str:
     """
     构建 Markdown 格式人物画像
     """
+    excluded_fields = set(exclude_fields or [])
     field_map: list[tuple[str, str]] = [
         ("figure_name", "姓名"),
         ("figure_gender", "性别"),
@@ -547,6 +551,8 @@ def buildFigurePersonaMarkdown(fr: FigureAndRelation) -> str:
     for field_name, title in field_map:
         value = getattr(fr, field_name, None)
         if value is None:
+            continue
+        if field_name in excluded_fields:
             continue
         if isinstance(value, str):
             text = value.strip()
@@ -617,7 +623,7 @@ async def getFRAllContext(
         fr = checkFigureAndRelationOwnership(db=db, user_id=user_id, fr_id=fr_id)
         if fr is None:
             return {"status": -4, "message": "FigureAndRelation not found"}
-    persona = buildFigurePersonaMarkdown(fr)
+    persona = buildFigurePersonaMarkdown(fr=fr)
 
     recalled_map = {
         "recalled_personality": None,

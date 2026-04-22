@@ -57,7 +57,15 @@ def nodeLoadFRAndPersona(state: ConversationGraphState) -> dict:
             logger.error("Figure and relation not found")
             raise ValueError("Figure and relation not found")
 
-        figure_persona = buildFigurePersonaMarkdown(figure_and_relation)
+        figure_persona = buildFigurePersonaMarkdown(
+            fr=figure_and_relation,
+            exclude_fields=[
+                "words_figure2user",
+                "words_user2figure",
+                "core_procedural_info",
+                "core_memory",
+            ],  # 不包含在其他部分被注入的字段
+        )
         words_to_user = figure_and_relation.words_figure2user
         # 追加节点执行日志，保留上游日志链路
         logs = state.get("logs") or []
@@ -124,27 +132,28 @@ async def nodeRecallFeedsFromDB(state: ConversationGraphState) -> dict:
         user_id=user_id,
         fr_id=fr_id,
         scope=[
-            {
-                "scope": FineGrainedFeedDimension.PERSONALITY,
-                "top_k": int(
-                    os.getenv("TOP_K_PERSONALITY_FEEDS_FOR_CONVERSATION", "20")
-                ),
-            },
-            {
-                "scope": FineGrainedFeedDimension.INTERACTION_STYLE,
-                "top_k": int(
-                    os.getenv("TOP_K_INTERACTION_FEEDS_FOR_CONVERSATION", "20")
-                ),
-            },
+            # 重大改动：完全不从 db 召回这两个低语境依赖的信息，避免和 persona 重复注入
+            # {
+            #     "scope": FineGrainedFeedDimension.PERSONALITY,
+            #     "top_k": int(
+            #         os.getenv("TOP_K_PERSONALITY_FEEDS_FOR_CONVERSATION", "3")
+            #     ),
+            # },
+            # {
+            #     "scope": FineGrainedFeedDimension.INTERACTION_STYLE,
+            #     "top_k": int(
+            #         os.getenv("TOP_K_INTERACTION_FEEDS_FOR_CONVERSATION", "3")
+            #     ),
+            # },
             {
                 "scope": FineGrainedFeedDimension.PROCEDURAL_INFO,
                 "top_k": int(
-                    os.getenv("TOP_K_PROCEDURAL_FEEDS_FOR_CONVERSATION", "20")
+                    os.getenv("TOP_K_PROCEDURAL_FEEDS_FOR_CONVERSATION", "10")
                 ),
             },
             {
                 "scope": FineGrainedFeedDimension.MEMORY,
-                "top_k": int(os.getenv("TOP_K_MEMORY_FEEDS_FOR_CONVERSATION", "20")),
+                "top_k": int(os.getenv("TOP_K_MEMORY_FEEDS_FOR_CONVERSATION", "10")),
             },
         ],
         query=query,
@@ -175,12 +184,12 @@ async def nodeRecallFeedsFromDB(state: ConversationGraphState) -> dict:
     raw_items = recalled.get("items") or {}
     if not isinstance(raw_items, dict):
         raw_items = {}
-    recalled_personalities_from_db = _recalledFeeds2Markdown(
-        raw_items.get("personality", [])
-    )
-    recalled_interaction_styles_from_db = _recalledFeeds2Markdown(
-        raw_items.get("interaction_style", [])
-    )
+    # recalled_personalities_from_db = _recalledFeeds2Markdown(
+    #     raw_items.get("personality", [])
+    # )
+    # recalled_interaction_styles_from_db = _recalledFeeds2Markdown(
+    #     raw_items.get("interaction_style", [])
+    # )
     recalled_procedural_infos_from_db = _recalledFeeds2Markdown(
         raw_items.get("procedural_info", [])
     )
@@ -206,8 +215,8 @@ async def nodeRecallFeedsFromDB(state: ConversationGraphState) -> dict:
     ]
     logger.info("nodeRecallFeedsFromDB executed finished\n")
     return {
-        "recalled_personalities_from_db": recalled_personalities_from_db,
-        "recalled_interaction_styles_from_db": recalled_interaction_styles_from_db,
+        # "recalled_personalities_from_db": recalled_personalities_from_db,
+        # "recalled_interaction_styles_from_db": recalled_interaction_styles_from_db,
         "recalled_procedural_infos_from_db": recalled_procedural_infos_from_db,
         "recalled_memories_from_db": recalled_memories_from_db,
         "warnings": warnings,
@@ -223,15 +232,19 @@ async def nodeRecallFeedsFromDB(state: ConversationGraphState) -> dict:
 #     """
 
 
-async def nodeBuildMessage(state: ConversationGraphState) -> dict:
-    logger.info("nodeBuildMessage is called")
+async def nodeBuildAndTrimMessage(state: ConversationGraphState) -> dict:
+    """
+    构建本轮消息并 trim messages
+    """
+    logger.info("nodeBuildAndTrimMessage is called")
 
     messages = state.get("messages") or []
     messages_received = state["request"]["messages_received"]
     messages_received = "\n".join(messages_received)
-
     messages.append(HumanMessage(content=messages_received or ""))
-    logger.info(f"nodeBuildMessage executed finished\n")
+
+    # todo：trim 消息
+    logger.info(f"nodeBuildAndTrimMessage executed finished\n")
     return {
         "messages": messages,
     }
@@ -282,8 +295,9 @@ async def nodeCallLLM(state: ConversationGraphState) -> ConversationGraphOutput:
             "logs": logs,
         }
 
-    low_context_depended_feeds = f"**注意**：以下信息作为关系与人物画像的补充。\n\n# 核心价值观与思维方式：\n{state['recalled_personalities_from_db']}\n\n# 沟通风格与反应模式：\n{state['recalled_interaction_styles_from_db']}"
-    high_context_depended_feeds = f"**注意**：以下信息仅供参考，只有和当前语境相关时需要使用，否则请忽略。\n\n# 核心程序性知识（ta怎么做事、工作方法）：\n{state['recalled_procedural_infos_from_db']}\n\n# 人生经历和重要故事：\n{state['recalled_memories_from_db']}\n"
+    # 重大改动：完全不从 db 召回这两个低语境依赖的信息，避免和 persona 重复注入
+    # low_context_depended_feeds = f"**注意**：以下信息作为关系与人物画像的补充。\n\n# 核心价值观与思维方式：\n{state['recalled_personalities_from_db']}\n\n# 沟通风格与反应模式：\n{state['recalled_interaction_styles_from_db']}"
+    high_context_depended_feeds = f"**注意**：以下信息仅供参考，只有和当前语境相关时需要使用，否则请忽略。\n\n# 人生经历和重要故事：\n{state['recalled_memories_from_db']}\n\n# 核心程序性知识（ta怎么做事、工作方法）：\n{state['recalled_procedural_infos_from_db']}\n"
 
     messages_to_send = [
         # 1. 系统提示词
@@ -291,7 +305,7 @@ async def nodeCallLLM(state: ConversationGraphState) -> ConversationGraphOutput:
         # 2. 关系与画像上下文
         SystemMessage(content=f"关系与人物画像：\n{state['figure_persona']}"),
         # # 3. DB召回的长期记忆（真实）
-        SystemMessage(content=low_context_depended_feeds),
+        # SystemMessage(content=low_context_depended_feeds),
         SystemMessage(content=high_context_depended_feeds),
         # # 4. Viking召回的长期记忆（不可信）
         # SystemMessage(
