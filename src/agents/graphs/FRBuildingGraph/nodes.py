@@ -873,8 +873,8 @@ async def nodePlanFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
         recall_res = await recallFineGrainedFeeds(
             user_id=user_id,
             fr_id=fr_id,
-            query=content,
             scope=[{"scope": dimension, "top_k": top_k}],
+            query=content,
         )
 
         recalled_candidates = []

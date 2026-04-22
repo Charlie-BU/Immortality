@@ -1,6 +1,11 @@
+import asyncio
 import logging
+import os
 from typing import Any
+from langchain_core.messages import HumanMessage, SystemMessage
 
+from src.agents.llm import prepareLLM
+from src.agents.prompt import getPrompt
 from src.database.enums import FigureRole, FineGrainedFeedDimension, Gender, MBTI
 from src.database.index import session
 from src.database.models import (
@@ -9,7 +14,12 @@ from src.database.models import (
     FigureAndRelation,
 )
 from src.services.fine_grained_feed import recallFineGrainedFeeds
-from src.utils.index import checkFigureAndRelationOwnership, serialize2String
+from src.utils.index import (
+    checkFigureAndRelationOwnership,
+    cleanList,
+    normalizeText,
+    serialize2String,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -509,24 +519,10 @@ def getAllFRBuildingGraphReport(
         }
 
 
-def _normalizeValue(value: Any) -> str:
-    if hasattr(value, "value"):
-        return str(value.value)
-    return str(value)
-
-
-def _normalizeTextList(values: list[Any]) -> list[str]:
-    normalized: list[str] = []
-    for item in values:
-        if item is None:
-            continue
-        text = str(item).strip()
-        if text != "":
-            normalized.append(text)
-    return normalized
-
-
 def buildFigurePersonaMarkdown(fr: FigureAndRelation) -> str:
+    """
+    构建 Markdown 格式人物画像
+    """
     field_map: list[tuple[str, str]] = [
         ("figure_name", "姓名"),
         ("figure_gender", "性别"),
@@ -560,18 +556,21 @@ def buildFigurePersonaMarkdown(fr: FigureAndRelation) -> str:
             lines.append(f"- {title}: {text}")
             continue
         if isinstance(value, list):
-            text_list = _normalizeTextList(value)
+            text_list = cleanList(value)
             if not text_list:
                 continue
             lines.append(f"- {title}: {'；'.join(text_list)}")
             continue
-        lines.append(f"- {title}: {_normalizeValue(value)}")
+        lines.append(f"- {title}: {normalizeText(value)}")
     if len(lines) == 1:
         lines.append("- 暂无有效画像信息")
     return "\n".join(lines)
 
 
 def buildRecalledMarkdown(title: str, items: list[dict[str, Any]]) -> str:
+    """
+    构建 Markdown 格式召回 feeds
+    """
     lines = [f"# {title}"]
     if not items:
         lines.append("- 无召回结果")
@@ -584,7 +583,7 @@ def buildRecalledMarkdown(title: str, items: list[dict[str, Any]]) -> str:
         sub_dimension = str(feed.get("sub_dimension", "")).strip()
         confidence = feed.get("confidence")
         confidence_text = (
-            _normalizeValue(confidence).strip() if confidence is not None else "unknown"
+            normalizeText(confidence) if confidence is not None else "unknown"
         )
         score = item.get("score", 0.0)
         try:
@@ -659,13 +658,13 @@ async def getFRAllContext(
             recall_res = await recallFineGrainedFeeds(
                 user_id=user_id,
                 fr_id=fr_id,
-                query=normalized_query,
                 scope=[
                     {
                         "scope": conf["dimension"],
                         "top_k": conf["top_k"],
                     }
                 ],
+                query=normalized_query,
             )
             if recall_res.get("status") != 200:
                 return {
@@ -691,4 +690,182 @@ async def getFRAllContext(
         "recalled_interaction_style": recalled_map["recalled_interaction_style"],
         "recalled_procedural_info": recalled_map["recalled_procedural_info"],
         "recalled_memory": recalled_map["recalled_memory"],
+    }
+
+
+async def syncFeedsToFRCore(
+    user_id: int,
+    fr_id: int,
+) -> dict:
+    """
+    同步 FineGrainedFeed 到 FigureAndRelation core 字段
+    """
+    if not isinstance(user_id, int):
+        return {"status": -1, "message": "Invalid user_id"}
+    if not isinstance(fr_id, int):
+        return {"status": -2, "message": "Invalid fr_id"}
+
+    with session() as db:
+        figure_and_relation = checkFigureAndRelationOwnership(
+            db=db, user_id=user_id, fr_id=fr_id
+        )
+        if figure_and_relation is None:
+            return {"status": -3, "message": "FigureAndRelation not found"}
+        # persona = buildFigurePersonaMarkdown(figure_and_relation) # 暂不需要 persona 注入提示词
+
+    dimension_conf: dict[str, dict[str, Any]] = {
+        FineGrainedFeedDimension.PERSONALITY.value: {
+            "field": "core_personality",
+            "title": "性格与价值观",
+            "dimension": FineGrainedFeedDimension.PERSONALITY,
+            "top_k": int(os.getenv("TOP_K_PERSONALITY_FEEDS_FOR_CORE_SYNC")),
+            "prompt_key": "SYNC_PERSONALITY_FEEDS_TO_FR_CORE",
+            "recalled_content": "",
+        },
+        FineGrainedFeedDimension.INTERACTION_STYLE.value: {
+            "field": "core_interaction_style",
+            "title": "互动风格",
+            "dimension": FineGrainedFeedDimension.INTERACTION_STYLE,
+            "top_k": int(os.getenv("TOP_K_INTERACTION_FEEDS_FOR_CORE_SYNC")),
+            "prompt_key": "SYNC_INTERACTION_FEEDS_TO_FR_CORE",
+            "recalled_content": "",
+        },
+        FineGrainedFeedDimension.PROCEDURAL_INFO.value: {
+            "field": "core_procedural_info",
+            "title": "程序性知识",
+            "dimension": FineGrainedFeedDimension.PROCEDURAL_INFO,
+            "top_k": int(os.getenv("TOP_K_PROCEDURAL_FEEDS_FOR_CORE_SYNC")),
+            "prompt_key": "SYNC_PROCEDURAL_FEEDS_TO_FR_CORE",
+            "recalled_content": "",
+        },
+        FineGrainedFeedDimension.MEMORY.value: {
+            "field": "core_memory",
+            "title": "人生记忆与故事",
+            "dimension": FineGrainedFeedDimension.MEMORY,
+            "top_k": int(os.getenv("TOP_K_MEMORY_FEEDS_FOR_CORE_SYNC")),
+            "prompt_key": "SYNC_MEMORY_FEEDS_TO_FR_CORE",
+            "recalled_content": "",
+        },
+    }
+
+    # 召回
+    # 本场景召回不需要 query
+    try:
+        recall_res = await recallFineGrainedFeeds(
+            user_id=user_id,
+            fr_id=fr_id,
+            scope=[
+                {
+                    "scope": conf["dimension"],
+                    "top_k": conf["top_k"],
+                }
+                for conf in dimension_conf.values()
+            ],
+        )
+    except Exception as e:
+        logger.error(f"Recall FineGrainedFeed failed: {str(e)}")
+        return {"status": -4, "message": "Recall FineGrainedFeed failed"}
+    if recall_res.get("status") != 200:
+        logger.warning(
+            f"Recall FineGrainedFeed failed: {recall_res.get('message', '')}"
+        )
+        return {"status": -4, "message": "Recall FineGrainedFeed failed"}
+
+    recalled_items = recall_res.get("items", {})
+
+    # 落入召回内容：无召回时保持空字符串，避免触发 LLM 生成并覆盖原字段
+    for conf in dimension_conf.values():
+        items = recalled_items.get(conf["dimension"].value, [])
+        conf["recalled_content"] = (
+            buildRecalledMarkdown(title=conf["title"], items=items) if items else ""
+        )
+
+    # LLM 提炼摘要
+    llm = prepareLLM(
+        "DOUBAO_2_0_LITE",
+        options={
+            "temperature": 0,
+            "reasoning_effort": "minimal",
+        },
+    )
+
+    async def _genCoreByLLM(
+        conf_by_dimension: dict[str, Any],
+    ) -> tuple[str, str | None]:
+        """
+        基于召回 feeds 生成可直接写入 FigureAndRelation core 字段的信息
+        """
+        core = None
+        if (
+            not conf_by_dimension["recalled_content"]
+            or conf_by_dimension["recalled_content"] == ""
+        ):
+            return conf_by_dimension["field"], core
+
+        SYSTEM_PROMPT = await getPrompt(os.getenv(conf_by_dimension["prompt_key"]))
+        if not SYSTEM_PROMPT:
+            logger.error(f"{conf_by_dimension['prompt_key']} prompt not found")
+            raise ValueError(f"{conf_by_dimension['prompt_key']} prompt not found")
+
+        user_prompt = f"当前主题：{conf_by_dimension['dimension'].value}\n{conf_by_dimension['recalled_content']}"
+        response = await llm.ainvoke(
+            [
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=user_prompt),
+            ]
+        )
+        core = response.content.strip()
+
+        return conf_by_dimension["field"], core
+
+    try:
+        # 并发任务
+        branch_results = await asyncio.gather(
+            *[_genCoreByLLM(conf) for conf in dimension_conf.values()]
+        )
+    except Exception as e:
+        logger.error(f"syncFeedsToFRCore failed during branch execution: {str(e)}")
+        return {"status": -4, "message": "Sync FR core failed"}
+
+    updates: dict[str, str] = {
+        field: core
+        for field, core in branch_results
+        if core and core != ""  # core 为空时，不更新对应字段
+    }
+    with session() as db:
+        try:
+            fr_logs: list[FROverallUpdateLog] = []
+            figure_and_relation = checkFigureAndRelationOwnership(
+                db=db, user_id=user_id, fr_id=fr_id
+            )
+            if figure_and_relation is None:
+                db.rollback()
+                return {"status": -3, "message": "FigureAndRelation not found"}
+
+            for field, value in updates.items():
+                old_value = getattr(figure_and_relation, field)
+                setattr(figure_and_relation, field, value)
+                fr_logs.append(
+                    FROverallUpdateLog(
+                        fr_id=fr_id,
+                        update_field_or_sub_dimension=field,
+                        old_value=serialize2String(old_value),
+                        new_value=serialize2String(value),
+                    )
+                )
+            if fr_logs:
+                db.add_all(fr_logs)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"syncFeedsToFRCore db update failed: {str(e)}")
+            return {"status": -5, "message": "Sync FR core failed"}
+
+    return {
+        "status": 200,
+        "message": "Sync FR core success",
+        # "core_personality": updates.get("core_personality", ""),
+        # "core_interaction_style": updates.get("core_interaction_style", ""),
+        # "core_procedural_info": updates.get("core_procedural_info", ""),
+        # "core_memory": updates.get("core_memory", ""),
     }

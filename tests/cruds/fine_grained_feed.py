@@ -1,4 +1,5 @@
 import asyncio
+import pprint
 
 from dotenv import load_dotenv
 
@@ -126,7 +127,7 @@ async def testAddFineGrainedFeed(fr_id: int, original_source_id: int):
             sub_dimension=item["sub_dimension"],
         )
         ress.append(res)
-    
+
     return ress
 
 
@@ -172,17 +173,17 @@ def testGetAllFineGrainedFeed(fr_id: int):
     return res
 
 
-async def testRecallFineGrainedFeeds(fr_id: int, query: str, top_k: int):
+async def testRecallFineGrainedFeeds(fr_id: int, top_k: int, query: str | None = None):
     res = await recallFineGrainedFeeds(
         user_id=1,
         fr_id=fr_id,
-        query=query,
         scope=[
             {
                 "scope": "all",
                 "top_k": top_k,
             }
         ],
+        query=query,
     )
     return res
 
@@ -245,4 +246,5 @@ def testGetAllFineGrainedFeedConflict(
 if __name__ == "__main__":
     # print(testAddOriginalSource(fr_id=1))
     # print(asyncio.run(testAddFineGrainedFeed(fr_id=1, original_source_id=2)))
-    print(asyncio.run(testRecallFineGrainedFeeds(fr_id=1, query="人际交往", top_k=3)))
+    pprint.pprint(asyncio.run(testRecallFineGrainedFeeds(fr_id=2, top_k=10)), indent=2)
+
