@@ -74,6 +74,7 @@ def nodeLoadFRAndPersona(state: ConversationGraphState) -> dict:
         ]
         logger.info("nodeLoadFRAndPersona executed finished\n")
         return {
+            "user_name": figure_and_relation.user.username,
             "figure_and_relation": figure_and_relation.toJson(),
             "figure_persona": figure_persona,
             "words_to_user": ", ".join(words_to_user),
@@ -125,7 +126,9 @@ async def nodeRecallFeedsFromDB(state: ConversationGraphState) -> dict:
         scope=[
             {
                 "scope": FineGrainedFeedDimension.PERSONALITY,
-                "top_k": int(os.getenv("TOP_K_PERSONALITY_FEEDS_FOR_CONVERSATION", "20")),
+                "top_k": int(
+                    os.getenv("TOP_K_PERSONALITY_FEEDS_FOR_CONVERSATION", "20")
+                ),
             },
             {
                 "scope": FineGrainedFeedDimension.INTERACTION_STYLE,
@@ -135,7 +138,9 @@ async def nodeRecallFeedsFromDB(state: ConversationGraphState) -> dict:
             },
             {
                 "scope": FineGrainedFeedDimension.PROCEDURAL_INFO,
-                "top_k": int(os.getenv("TOP_K_PROCEDURAL_FEEDS_FOR_CONVERSATION", "20")),
+                "top_k": int(
+                    os.getenv("TOP_K_PROCEDURAL_FEEDS_FOR_CONVERSATION", "20")
+                ),
             },
             {
                 "scope": FineGrainedFeedDimension.MEMORY,
@@ -252,6 +257,7 @@ async def nodeCallLLM(state: ConversationGraphState) -> ConversationGraphOutput:
         {
             "words_to_user": state["words_to_user"],
             "current_timestamp": current_timestamp,
+            "user_name": state["user_name"],
         },
     )
     if not CONVERSATION_SYSTEM_PROMPT:

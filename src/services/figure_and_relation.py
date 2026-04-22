@@ -53,7 +53,6 @@ fr_non_nullable_fields = {
     "figure_dislikes",
     "words_figure2user",
     "words_user2figure",
-    "exact_relation",
     "core_personality",
     "core_interaction_style",
     "core_procedural_info",

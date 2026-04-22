@@ -529,7 +529,7 @@ async def nodePlanFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
             plan_actions.append(
                 {
                     "field": field,
-                    "action": LLM_compare_res.get("conflict_status").value,
+                    "action": normalizeText(LLM_compare_res.get("conflict_status")),
                     "detail": LLM_compare_res.get("detail"),
                 }
             )
@@ -563,12 +563,16 @@ async def nodePlanFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
                 old_value=existing_text,
                 new_value=new_text,
             )
+            llm_final_value = LLM_compare_res.get("final_value")
+            if not llm_final_value or llm_final_value == "":
+                # 模型判断为空，不更新直接跳过
+                continue
             # 对于 FR 内在字段判断，直接更新，无需考虑冲突落库
-            planned_updates[field] = LLM_compare_res.get("final_value")
+            planned_updates[field] = normalizeText(llm_final_value)
             plan_actions.append(
                 {
                     "field": field,
-                    "action": LLM_compare_res.get("conflict_status").value,
+                    "action": normalizeText(LLM_compare_res.get("conflict_status")),
                     "detail": LLM_compare_res.get("detail"),
                 }
             )
