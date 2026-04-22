@@ -1,5 +1,4 @@
 from urllib.parse import unquote
-from robyn.robyn import Request
 from sqlalchemy import or_
 from jose import jwt
 from jose.exceptions import JWTError
@@ -45,22 +44,13 @@ def decodeAccessToken(token: str) -> dict:
 
 
 def getUserIdByAccessToken(
-    request: Request | None = None,
     token: str | None = None,
 ) -> int:
     """
     通过access token获取user id
     """
-    if request is not None and token is not None:
-        raise Exception("Request and token should not be provided at the same time")
-    if request is not None:
-        authorization = request.headers.get("Authorization", "")
-        scheme, _, credential = authorization.strip().partition(" ")
-        if scheme.lower() != "bearer" or not credential.strip():
-            raise Exception("Invalid Authorization header format")
-        token = credential.strip()
-    elif token is None:
-        raise Exception("Either request or token is required")
+    if token is None:
+        raise Exception("Access token is required")
     try:
         payload = decodeAccessToken(token)
     except JWTError as e:

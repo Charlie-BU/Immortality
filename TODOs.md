@@ -1,5 +1,5 @@
 - 模型输出 json 不稳定，需要兜底+重试，不能阻塞整个链路
-- Cronjob：按照不同类别的 feed 更新 fr core 字段（不放在 FRBuildingGrph，太耗时）
+- ✅ Cronjob：按照不同类别的 feed 更新 fr core 字段（不放在 FRBuildingGrph，太耗时）
 - System Message 飞书卡片渲染
 - CLI 支持
 - checkpoint 短期记忆 trim
