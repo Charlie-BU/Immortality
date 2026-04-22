@@ -33,12 +33,9 @@ def _recalledFeeds2Markdown(items: list[dict]) -> str:
         sub_dimension = feed.get("sub_dimension") or ""
 
         meta: list[str] = []
-        confidence = feed.get("confidence") or ""
         recalled_score = item.get("score")
-        if confidence:
-            meta.append(f"confidence={confidence}")
         if isinstance(recalled_score, (int, float)):
-            meta.append(f"recalled_score={recalled_score:.4f}")
+            meta.append(f"综合分数（越高相关性和置信度越高）={recalled_score:.4f}")
 
         suffix = f" ({', '.join(meta)})" if meta else ""
         lines.append(f"{index}. {sub_dimension}\n{content}\n{suffix}")
