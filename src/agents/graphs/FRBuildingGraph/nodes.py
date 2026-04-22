@@ -156,7 +156,7 @@ async def nodePreprocessInput(state: FRBuildingGraphState) -> dict:
             "temperature": 0,
             "reasoning_effort": "minimal",
         },
-    )   # todo：参数 TBD
+    )  # todo：参数 TBD
     FR_BUILDING_PREPROCESS = await getPrompt(os.getenv("FR_BUILDING_PREPROCESS"))
     # 提示词兜底
     if not FR_BUILDING_PREPROCESS:
@@ -873,8 +873,8 @@ async def nodePlanFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
         recall_res = await recallFineGrainedFeeds(
             user_id=user_id,
             fr_id=fr_id,
-            query=content,
             scope=[{"scope": dimension, "top_k": top_k}],
+            query=content,
         )
 
         recalled_candidates = []
@@ -1298,95 +1298,96 @@ def nodeBuildFRBuildingGraphOutput(
     }
 
 
-async def nodeGenerateFRBuildingReport(
-    state: FRBuildingGraphState,
-) -> dict:
-    """
-    生成 FR 构建报告
-    """
-    logger.info("nodeGenerateFRBuildingReport is called")
-    request = state.get("request") or {}
-    user_id = request.get("user_id")
-    fr_id = request.get("fr_id")
-    if not isinstance(user_id, int):
-        logger.error("Invalid request.user_id")
-        raise ValueError("Invalid request.user_id")
-    if not isinstance(fr_id, int):
-        logger.error("Invalid request.fr_id")
-        raise ValueError("Invalid request.fr_id")
+# 暂时弃用：比较耗时
+# async def nodeGenerateFRBuildingReport(
+#     state: FRBuildingGraphState,
+# ) -> dict:
+#     """
+#     生成 FR 构建报告
+#     """
+#     logger.info("nodeGenerateFRBuildingReport is called")
+#     request = state.get("request") or {}
+#     user_id = request.get("user_id")
+#     fr_id = request.get("fr_id")
+#     if not isinstance(user_id, int):
+#         logger.error("Invalid request.user_id")
+#         raise ValueError("Invalid request.user_id")
+#     if not isinstance(fr_id, int):
+#         logger.error("Invalid request.fr_id")
+#         raise ValueError("Invalid request.fr_id")
 
-    warnings = state.get("warnings") or []
-    logs = state.get("logs") or []
-    output = {
-        "status": state.get("status"),
-        "message": state.get("message"),
-        "original_source_id": state.get("original_source_id"),
-        "fr_update_result": state.get("fr_update_result"),
-        "feed_upsert_results": state.get("feed_upsert_results"),
-        "logs": state.get("logs"),
-        "warnings": state.get("warnings"),
-        "errors": state.get("errors"),
-    }
-    llm = prepareLLM(
-        "DOUBAO_2_0_LITE",
-        options={
-            "temperature": 0,
-            "reasoning_effort": "low",
-        },
-    )
-    report_markdown = ""
-    try:
-        FR_BUILDING_REPORT = await getPrompt(os.getenv("FR_BUILDING_REPORT"))
-        if not FR_BUILDING_REPORT:
-            logger.error("FR_BUILDING_REPORT prompt not found")
-            raise ValueError("FR_BUILDING_REPORT prompt not found")
+#     warnings = state.get("warnings") or []
+#     logs = state.get("logs") or []
+#     output = {
+#         "status": state.get("status"),
+#         "message": state.get("message"),
+#         "original_source_id": state.get("original_source_id"),
+#         "fr_update_result": state.get("fr_update_result"),
+#         "feed_upsert_results": state.get("feed_upsert_results"),
+#         "logs": state.get("logs"),
+#         "warnings": state.get("warnings"),
+#         "errors": state.get("errors"),
+#     }
+#     llm = prepareLLM(
+#         "DOUBAO_2_0_LITE",
+#         options={
+#             "temperature": 0,
+#             "reasoning_effort": "low",
+#         },
+#     )
+#     report_markdown = ""
+#     try:
+#         FR_BUILDING_REPORT = await getPrompt(os.getenv("FR_BUILDING_REPORT"))
+#         if not FR_BUILDING_REPORT:
+#             logger.error("FR_BUILDING_REPORT prompt not found")
+#             raise ValueError("FR_BUILDING_REPORT prompt not found")
 
-        user_prompt = json.dumps(
-            output, ensure_ascii=False, indent=2, default=jsonDefault
-        )
-        response = await llm.ainvoke(
-            [
-                SystemMessage(content=FR_BUILDING_REPORT),
-                HumanMessage(content=user_prompt),
-            ]
-        )
-        report_markdown = normalizeText(response.content)
-    except Exception as e:
-        warning = f"Generate FR report via LLM failed: {str(e)}"
-        logger.warning(warning)
-        warnings = warnings + [warning]
-        raise ValueError(warning)
+#         user_prompt = json.dumps(
+#             output, ensure_ascii=False, indent=2, default=jsonDefault
+#         )
+#         response = await llm.ainvoke(
+#             [
+#                 SystemMessage(content=FR_BUILDING_REPORT),
+#                 HumanMessage(content=user_prompt),
+#             ]
+#         )
+#         report_markdown = normalizeText(response.content)
+#     except Exception as e:
+#         warning = f"Generate FR report via LLM failed: {str(e)}"
+#         logger.warning(warning)
+#         warnings = warnings + [warning]
+#         raise ValueError(warning)
 
-    persist_res = addFRBuildingGraphReport(
-        user_id=user_id,
-        fr_id=fr_id,
-        report=report_markdown,
-    )
-    if persist_res.get("status") != 200:
-        logger.error(
-            f"Persist FRBuildingGraphReport failed: {persist_res.get('message', '')}"
-        )
-        raise ValueError(
-            f"Persist FRBuildingGraphReport failed: {persist_res.get('message', '')}"
-        )
+#     persist_res = addFRBuildingGraphReport(
+#         user_id=user_id,
+#         fr_id=fr_id,
+#         report=report_markdown,
+#     )
+#     if persist_res.get("status") != 200:
+#         logger.error(
+#             f"Persist FRBuildingGraphReport failed: {persist_res.get('message', '')}"
+#         )
+#         raise ValueError(
+#             f"Persist FRBuildingGraphReport failed: {persist_res.get('message', '')}"
+#         )
 
-    report_id = persist_res.get("fr_building_graph_report_id")
-    logs += [
-        {
-            "step": "nodeGenerateFRBuildingReport",
-            "status": "ok",
-            "detail": "FR building report generated and persisted",
-            "data": {
-                "fr_building_graph_report_id": report_id,
-                "report_length": len(report_markdown),
-            },
-        }
-    ]
-    logger.info(f"report_markdown: \n{report_markdown}\n")
+#     report_id = persist_res.get("fr_building_graph_report_id")
+#     logs += [
+#         {
+#             "step": "nodeGenerateFRBuildingReport",
+#             "status": "ok",
+#             "detail": "FR building report generated and persisted",
+#             "data": {
+#                 "fr_building_graph_report_id": report_id,
+#                 "report_length": len(report_markdown),
+#             },
+#         }
+#     ]
+#     logger.info(f"report_markdown: \n{report_markdown}\n")
 
-    logger.info("nodeGenerateFRBuildingReport executed finished\n")
-    return {
-        "fr_building_report": report_markdown,
-        "warnings": warnings,
-        "logs": logs,
-    }
+#     logger.info("nodeGenerateFRBuildingReport executed finished\n")
+#     return {
+#         "fr_building_report": report_markdown,
+#         "warnings": warnings,
+#         "logs": logs,
+#     }

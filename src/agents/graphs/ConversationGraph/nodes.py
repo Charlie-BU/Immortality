@@ -125,27 +125,27 @@ async def nodeRecallFeedsFromDB(state: ConversationGraphState) -> dict:
     recalled = await recallFineGrainedFeeds(
         user_id=user_id,
         fr_id=fr_id,
-        query=query,
         scope=[
             {
                 "scope": FineGrainedFeedDimension.PERSONALITY,
-                "top_k": int(os.getenv("TOP_K_FEEDS_FOR_PERSONALITY_RECALL", "20")),
+                "top_k": int(os.getenv("TOP_K_PERSONALITY_FEEDS_FOR_CONVERSATION", "20")),
             },
             {
                 "scope": FineGrainedFeedDimension.INTERACTION_STYLE,
                 "top_k": int(
-                    os.getenv("TOP_K_FEEDS_FOR_INTERACTION_STYLE_RECALL", "20")
+                    os.getenv("TOP_K_INTERACTION_FEEDS_FOR_CONVERSATION", "20")
                 ),
             },
             {
                 "scope": FineGrainedFeedDimension.PROCEDURAL_INFO,
-                "top_k": int(os.getenv("TOP_K_FEEDS_FOR_PROCEDURAL_INFO_RECALL", "20")),
+                "top_k": int(os.getenv("TOP_K_PROCEDURAL_FEEDS_FOR_CONVERSATION", "20")),
             },
             {
                 "scope": FineGrainedFeedDimension.MEMORY,
-                "top_k": int(os.getenv("TOP_K_FEEDS_FOR_MEMORY_RECALL", "20")),
+                "top_k": int(os.getenv("TOP_K_MEMORY_FEEDS_FOR_CONVERSATION", "20")),
             },
         ],
+        query=query,
     )
     if recalled.get("status") != 200:
         error_message = f"Recall failed: {recalled.get('message', 'Unknown error')}"
@@ -303,6 +303,8 @@ async def nodeCallLLM(state: ConversationGraphState) -> ConversationGraphOutput:
     # })
     # response = await llm.ainvoke(messages_to_send)
     # response_content = response.content if hasattr(response, "content") else response
+
+    logger.info(f"\nmessages_to_send:\n{messages_to_send}\n\n")
 
     resp = await arkAinvoke(
         model="DOUBAO_2_0_LITE",

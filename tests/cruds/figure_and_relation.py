@@ -67,12 +67,12 @@ def testDeleteFigureAndRelation(fr_id: int):
 
 
 async def testGetFRAllContext(query: str | None = None):
-    res = await getFRAllContext(user_id=1, fr_id=2, query=query)
+    res = await getFRAllContext(user_id=1, fr_id=3, query=query)
     return res
 
 
 if __name__ == "__main__":
     start = time.perf_counter()
     # print("testAddFigureAndRelation:", testAddFigureAndRelation())
-    print("testGetFRAllContext:", json.dumps(asyncio.run(testGetFRAllContext("语文")), ensure_ascii=False, indent=2))
-    print(f"testGetFRAllContext cost: {time.perf_counter() - start:.4f} s")
+    print("testGetFRAllContext:", json.dumps(asyncio.run(testGetFRAllContext("全部")), ensure_ascii=False, indent=2))
+    # print(f"testGetFRAllContext cost: {time.perf_counter() - start:.4f} s")

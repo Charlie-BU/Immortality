@@ -349,8 +349,8 @@ class _recallScopeAndTopK(TypedDict):
 async def recallFineGrainedFeeds(
     user_id: int,
     fr_id: int,
-    query: str,
     scope: List[_recallScopeAndTopK],
+    query: str | None = None,
 ) -> dict:
     """
     召回细粒度信息
@@ -359,8 +359,8 @@ async def recallFineGrainedFeeds(
         return {"status": -1, "message": "Invalid user_id"}
     if not isinstance(fr_id, int):
         return {"status": -2, "message": "Invalid fr_id"}
-    if not query or query.strip() == "":
-        return {"status": -3, "message": "Query is empty"}
+    if query is not None and not isinstance(query, str):
+        return {"status": -3, "message": "Invalid query"}
     if not isinstance(scope, list) or not scope:
         return {"status": -4, "message": "Scope config is invalid"}
 
@@ -383,15 +383,22 @@ async def recallFineGrainedFeeds(
         seen_scope_items.add(item_scope)
         normalized_scope_cfg.append((item_scope, item_top_k))
 
-    try:
-        vector = await vectorizeText(query.strip())
-    except Exception as e:
-        logger.error(f"Embedding failed: {str(e)}")
-        return {"status": -5, "message": "Embedding failed"}
-    if not isinstance(vector, list) or not vector:
-        return {"status": -6, "message": "Invalid embedding result"}
+    has_query = query is not None and query.strip() != ""
+    if has_query:
+        query = query.strip()
+    distance = None
 
-    distance = FineGrainedFeed.embedding.cosine_distance(vector)
+    if has_query:
+        # query 不为空：走向量召回逻辑
+        try:
+            vector = await vectorizeText(query)
+        except Exception as e:
+            logger.error(f"Embedding failed: {str(e)}")
+            return {"status": -5, "message": "Embedding failed"}
+        if not isinstance(vector, list) or not vector:
+            return {"status": -6, "message": "Invalid embedding result"}
+        distance = FineGrainedFeed.embedding.cosine_distance(vector)
+
     confidence_weight_map = {
         FineGrainedFeedConfidence.VERBATIM: 1.0,
         FineGrainedFeedConfidence.ARTIFACT: 0.85,
@@ -411,35 +418,58 @@ async def recallFineGrainedFeeds(
         results = {}
         # 分别按 scope 召回
         for scope_item, scope_top_k in normalized_scope_cfg:
-            db_query = db.query(FineGrainedFeed, distance.label("distance")).filter(
-                FineGrainedFeed.fr_id == fr_id,
-                FineGrainedFeed.is_deleted == False,
-            )
+            if has_query:
+                # query 不为空：走向量召回逻辑
+                db_query = db.query(FineGrainedFeed, distance.label("distance")).filter(
+                    FineGrainedFeed.fr_id == fr_id,
+                    FineGrainedFeed.is_deleted == False,
+                )
+            else:
+                # query 为空：先获取全部 feeds
+                db_query = db.query(FineGrainedFeed).filter(
+                    FineGrainedFeed.fr_id == fr_id,
+                    FineGrainedFeed.is_deleted == False,
+                )
             if scope_item != "all":
+                # 按 scope 筛选
                 db_query = db_query.filter(FineGrainedFeed.dimension == scope_item)
 
-            candidates: list[tuple[FineGrainedFeed, float]] = (
-                db_query.order_by(distance.asc())
-                .limit(max(vector_candidates_limit, scope_top_k))
-                .all()
-            )
+            if has_query:
+                candidates = (
+                    db_query.order_by(distance.asc())
+                    .limit(max(vector_candidates_limit, scope_top_k))
+                    .all()
+                )
+            else:
+                candidates = db_query.all()
 
             per_scope_results = []
             # 对每个召回项计算 score，重排
-            for fine_grained_feed, dist in candidates:
-                semantic_score = max(0.0, min(1.0, 1 - float(dist) / 2))
+            for candidate in candidates:
+                if has_query:
+                    fine_grained_feed, dist = candidate
+                    semantic_score = max(0.0, min(1.0, 1 - float(dist) / 2))
+                else:
+                    fine_grained_feed = candidate
+                    dist = None
+                    semantic_score = None
                 confidence_weight = confidence_weight_map.get(
                     fine_grained_feed.confidence, 0.7
                 )
                 created_at = fine_grained_feed.created_at
 
                 decay = timeDecay(created_at) if created_at else 1.0
-                raw_score = semantic_score * 0.8 + confidence_weight * 0.2
+                if has_query:
+                    # query 不为空：语义分和置信度共同计算分数
+                    raw_score = semantic_score * 0.8 + confidence_weight * 0.2
+                else:
+                    # query 为空：仅用置信度计算分数
+                    raw_score = confidence_weight
                 score = raw_score * decay
 
                 per_scope_results.append(
                     {
-                        "distance": float(dist),
+                        "distance": float(dist) if dist is not None else None,
                         "score": score,
                         "semantic_score": semantic_score,
                         "confidence_weight": confidence_weight,
@@ -458,7 +488,7 @@ async def recallFineGrainedFeeds(
                 grouped_by_dimension: dict[str, list[dict]] = {}
                 for item in per_scope_results[:scope_top_k]:
                     fine_grained_feed = item.get("fine_grained_feed") or {}
-                    dimension = fine_grained_feed.get("dimension")
+                    dimension = fine_grained_feed.get("dimension").value
                     if not isinstance(dimension, str) or dimension == "":
                         continue
                     grouped_by_dimension.setdefault(dimension, []).append(item)

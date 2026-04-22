@@ -90,13 +90,19 @@ def cleanList(items: list):
     return result
 
 
-def normalizeText(value) -> str:
+def normalizeText(value: Any) -> str:
     """
-    归一化文本，移除首尾空格。
+    归一化文本和枚举值，移除首尾空格，转换为字符串。
     """
-    if not isinstance(value, str):
-        return ""
-    return value.strip()
+    if hasattr(value, "value"):
+        return str(value.value)
+    if isinstance(value, str):
+        return value.strip()
+    else:
+        try:
+            return str(value).strip()
+        except:
+            return ""
 
 
 def serialize2String(value: Any) -> str | None:
