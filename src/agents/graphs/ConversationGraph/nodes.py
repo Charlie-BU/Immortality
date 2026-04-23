@@ -135,7 +135,9 @@ async def _buildTrimmedShortTermMemory(
     while len(messages_after_trim) > 1 and (
         kept_chars > int(os.getenv("SHORT_TERM_MEMORY_TARGET_CHARS", "1000"))
         or len(messages_after_trim)
-        > int(os.getenv("SHORT_TERM_MEMORY_MAX_MESSAGES", "30"))  # SHORT_TERM_MEMORY_MAX_MESSAGES 只用做兜底
+        > int(
+            os.getenv("SHORT_TERM_MEMORY_MAX_MESSAGES", "30")
+        )  # SHORT_TERM_MEMORY_MAX_MESSAGES 只用做兜底
     ):
         # round_uuid 相同的消息视为同一轮次，trim 时整轮删除，避免 Human/AI 被拆开。
         # 对于未打 round_uuid 的历史消息，退化成单条删除，避免误删多个轮次。
@@ -410,8 +412,10 @@ async def nodeBuildAndTrimMessage(state: ConversationGraphState) -> dict:
     messages_received = "\n".join(messages_received)
     # 添加本轮次 HumanMessage
     messages.append(
-        HumanMessage(content=messages_received or ""),
-        additional_kwargs={"round_uuid": state.get("round_uuid")},
+        HumanMessage(
+            content=messages_received or "",
+            additional_kwargs={"round_uuid": state.get("round_uuid")},
+        )
     )
 
     (

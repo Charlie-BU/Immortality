@@ -67,7 +67,7 @@ def showMenu(open_id: str) -> None:
     menu_text = "\n\n".join(
         [
             *[
-                f"{index}. **{item['content']}**\n```text\n{item['hint']}\n```"
+                f"{index}. **{item['content']}**\n```bash\n{item['hint']}\n```"
                 for index, item in enumerate(menu, start=1)
             ],
             "发送以上命令即可执行对应操作",
@@ -113,8 +113,8 @@ def listAvailableFRs(open_id: str) -> None:
             return
         fr_list = "\n".join(
             [
-                f"{index}. **{fr.figure_name}**  \n   `fr_id: {fr.id}`"
-                for index, fr in enumerate(figure_and_relations, start=1)
+                f"- **{fr.figure_name}**  \n   `fr_id: {fr.id}`"
+                for fr in figure_and_relations
             ]
         )
         sendCard2OpenId(

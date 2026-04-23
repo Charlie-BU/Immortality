@@ -701,7 +701,7 @@ async def getFRAllContext(
 async def syncFeedsToFRCore(
     user_id: int,
     fr_id: int,
-) -> dict:
+) -> dict[str, Any]:
     """
     同步 FineGrainedFeed 到 FigureAndRelation core 字段
     """
@@ -873,4 +873,50 @@ async def syncFeedsToFRCore(
         # "core_interaction_style": updates.get("core_interaction_style", ""),
         # "core_procedural_info": updates.get("core_procedural_info", ""),
         # "core_memory": updates.get("core_memory", ""),
+    }
+
+
+async def syncAllFeedsToFRCore(user_id: int) -> dict[str, Any]:
+    """
+    将用户所有 FR 的 FineGrainedFeed 同步到其 FigureAndRelation core 字段
+    """
+    if not isinstance(user_id, int):
+        return {"status": -1, "message": "User ID must be an integer"}
+
+    fr_ids: list[int] = []
+    with session() as db:
+        fr_ids = [
+            row[0]
+            for row in db.query(FigureAndRelation.id)
+            .filter(
+                FigureAndRelation.user_id == user_id,
+                FigureAndRelation.is_deleted == False,
+            )
+            .all()
+        ]
+        if not fr_ids or len(fr_ids) == 0:
+            return {"status": -2, "message": "User has no FigureAndRelation"}
+
+    res: dict[str, Any] = {}
+    success_count = 0
+    for fr_id in fr_ids:
+        res[str(fr_id)] = await syncFeedsToFRCore(user_id=user_id, fr_id=fr_id)
+        if res[str(fr_id)]["status"] == 200:
+            success_count += 1
+    return {
+        "status": (
+            200 if success_count == len(fr_ids) else -3 if success_count == 0 else 201
+        ),
+        "message": (
+            "Sync FR core success"
+            if success_count == len(fr_ids)
+            else (
+                "Sync FR core partial success"
+                if success_count == 0
+                else "Sync FR core partial success"
+            )
+        ),
+        "results": res,
+        "success_count": success_count,
+        "fail_count": len(fr_ids) - success_count,
     }
