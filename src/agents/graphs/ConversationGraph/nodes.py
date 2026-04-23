@@ -110,9 +110,9 @@ async def _buildTrimmedShortTermMemory(
     total_chars_before_trim = sum(_getMessageCharCount(message) for message in messages)
     messages_count_before_trim = len(messages)
     if total_chars_before_trim <= int(
-        os.getenv("SHORT_TERM_MEMORY_MAX_CHARS", "4000")
+        os.getenv("SHORT_TERM_MEMORY_MAX_CHARS", "1600")
     ) and messages_count_before_trim <= int(
-        os.getenv("SHORT_TERM_MEMORY_MAX_MESSAGES", "12")
+        os.getenv("SHORT_TERM_MEMORY_MAX_MESSAGES", "30")
     ):
         # 字符数和消息条数都在阈值内，无需裁剪
         return (
@@ -133,9 +133,9 @@ async def _buildTrimmedShortTermMemory(
     kept_chars = total_chars_before_trim  # 剩余的字符数
 
     while len(messages_after_trim) > 1 and (
-        kept_chars > int(os.getenv("SHORT_TERM_MEMORY_TARGET_CHARS", "2800"))
+        kept_chars > int(os.getenv("SHORT_TERM_MEMORY_TARGET_CHARS", "1000"))
         or len(messages_after_trim)
-        > int(os.getenv("SHORT_TERM_MEMORY_MAX_MESSAGES", "12"))
+        > int(os.getenv("SHORT_TERM_MEMORY_MAX_MESSAGES", "30"))  # SHORT_TERM_MEMORY_MAX_MESSAGES 只用做兜底
     ):
         # round_uuid 相同的消息视为同一轮次，trim 时整轮删除，避免 Human/AI 被拆开。
         # 对于未打 round_uuid 的历史消息，退化成单条删除，避免误删多个轮次。
@@ -409,9 +409,10 @@ async def nodeBuildAndTrimMessage(state: ConversationGraphState) -> dict:
     messages_received = state["request"]["messages_received"]
     messages_received = "\n".join(messages_received)
     # 添加本轮次 HumanMessage
-    messages.append(HumanMessage(content=messages_received or ""), additional_kwargs={
-        "round_uuid": state.get("round_uuid")
-    })
+    messages.append(
+        HumanMessage(content=messages_received or ""),
+        additional_kwargs={"round_uuid": state.get("round_uuid")},
+    )
 
     (
         trimmed_messages,
@@ -602,9 +603,10 @@ async def nodeCallLLM(state: ConversationGraphState) -> ConversationGraphOutput:
     next_messages = messages
     if figure_messages_this_round:
         next_messages = messages + [
-            AIMessage(content="\n".join(figure_messages_this_round), additional_kwargs={
-                "round_uuid": state.get("round_uuid")
-            })
+            AIMessage(
+                content="\n".join(figure_messages_this_round),
+                additional_kwargs={"round_uuid": state.get("round_uuid")},
+            )
         ]
     logs += [
         {
