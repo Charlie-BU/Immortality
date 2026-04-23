@@ -178,7 +178,7 @@ class FigureAndRelation(Base, SerializableMixin):
         comment="用户真实对 Figure 讲的话",
     )
 
-    # 详细信息（markdown 动态填充）
+    # 详细关系（markdown 动态填充）
     exact_relation = Column(
         Text,
         nullable=True,
