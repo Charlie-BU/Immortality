@@ -8,21 +8,21 @@ from src.cli.utils import printServiceResInCLI
 from src.database.index import session
 
 
-def topSubparserBuilder(
+def registerTopSubparser(
     subparsers: _SubParsersAction,
     add_json: Callable[[ArgumentParser], Action],
 ) -> ArgumentParser:
     """
-    构建顶层子命令解析器
+    注册顶层子命令
     """
     # doctor
     doctor_parser = subparsers.add_parser("doctor", help="Doctor check")
     doctor_parser.usage = "immortality doctor [-h] [--json]"
     add_json(doctor_parser)
-    doctor_parser.set_defaults(func=doctorCMD)
+    doctor_parser.set_defaults(func=doctorCLI)
 
 
-def doctorCMD(args: Namespace) -> int:
+def doctorCLI(args: Namespace) -> int:
     """
     检查系统是否健康
     """

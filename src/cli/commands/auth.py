@@ -5,45 +5,45 @@ from typing import Callable
 from src.cli.utils import (
     CLIError,
     getUserIdFromLocalSession,
-    printDictAsTableInCLI,
+    printTableInCLI,
     printServiceResInCLI,
 )
 from src.services.user import getUserById, getUserIdByAccessToken, userLogin
 from src.cli.session import clearLocalSession, saveLocalSession
 
 
-def authParserBuilder(
+def registerAuthSubparser(
     subparsers: _SubParsersAction,
     add_json: Callable[[ArgumentParser], Action],
 ) -> ArgumentParser:
     """
-    构建 auth 子命令解析器
+    注册 auth 子命令
     """
     # auth
     auth_parser = subparsers.add_parser("auth", help="Authorization commands")
-    auth_parser.usage = "immortality auth {login, logout} [-h]"
+    auth_parser.usage = "immortality auth {login, logout, whoami} [-h]"
     auth_subparsers = auth_parser.add_subparsers(dest="auth_command")
 
     # auth login
     login_parser = auth_subparsers.add_parser("login", help="User login")
     login_parser.usage = "immortality auth login [-h] [--json]"
     add_json(login_parser)
-    login_parser.set_defaults(func=authLoginCMD)
+    login_parser.set_defaults(func=loginCLI)
 
     # auth logout
     logout_parser = auth_subparsers.add_parser("logout", help="User logout")
     logout_parser.usage = "immortality auth logout [-h] [--json]"
     add_json(logout_parser)
-    logout_parser.set_defaults(func=authLogoutCMD)
+    logout_parser.set_defaults(func=logoutCLI)
 
     # auth whoami
     whoami_parser = auth_subparsers.add_parser("whoami", help="查看当前登录用户")
     whoami_parser.usage = "immortality auth whoami [-h] [--json]"
     add_json(whoami_parser)
-    whoami_parser.set_defaults(func=authWhoamiCMD)
+    whoami_parser.set_defaults(func=whoamiCLI)
 
 
-def authLoginCMD(args: Namespace) -> int:
+def loginCLI(args: Namespace) -> int:
     """
     用户登录
     """
@@ -90,7 +90,7 @@ def authLoginCMD(args: Namespace) -> int:
     return 0
 
 
-def authLogoutCMD(args: Namespace) -> int:
+def logoutCLI(args: Namespace) -> int:
     """
     用户退出登录
     """
@@ -102,7 +102,7 @@ def authLogoutCMD(args: Namespace) -> int:
     return 0
 
 
-def authWhoamiCMD(args: Namespace) -> int:
+def whoamiCLI(args: Namespace) -> int:
     """
     获取当前登录用户信息
     """
@@ -113,5 +113,5 @@ def authWhoamiCMD(args: Namespace) -> int:
     if args.json:
         printServiceResInCLI(res, as_json=True)
     else:
-        printDictAsTableInCLI(user)
+        printTableInCLI(user)
     return 0 if res.get("status") == 200 else 1

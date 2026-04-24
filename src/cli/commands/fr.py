@@ -1,110 +1,284 @@
 from argparse import Namespace, ArgumentParser, Action, _SubParsersAction
 from typing import Callable
+import questionary
+import asyncio
 
 from src.cli.utils import (
     CLIError,
     getUserIdFromLocalSession,
+    printMarkdownInCLI,
     printServiceResInCLI,
+    printTableInCLI,
 )
 from src.database.enums import FigureRole, Gender, MBTI, parseEnum
 from src.services.figure_and_relation import (
     addFigureAndRelation,
     getAllFigureAndRelations,
+    getFRAllContext,
+    syncAllFeedsToFRCore,
+    syncFeedsToFRCore,
 )
 
 
-def frParserBuilder(
+def registerFRSubparser(
     subparsers: _SubParsersAction,
     add_json: Callable[[ArgumentParser], Action],
 ) -> ArgumentParser:
     """
-    构建 fr 子命令解析器
+    注册 fr 子命令
     """
     # fr
-    fr_parser = subparsers.add_parser("fr", help="FigureAndRelation 相关命令")
-    fr_parser.usage = "immortality fr {create, list} [-h]"
+    fr_parser = subparsers.add_parser("fr", help="FigureAndRelation commands")
+    fr_parser.usage = "immortality fr {add, list, show, sync_feeds} [-h]"
     fr_subparsers = fr_parser.add_subparsers(dest="fr_command")
 
-    fr_create_parser = fr_subparsers.add_parser("create", help="创建 FR")
-    fr_create_parser.usage = (
-        "immortality fr create --name NAME --gender GENDER --role ROLE "
-        "[--mbti MBTI] [--birthday BIRTHDAY] [--occupation OCCUPATION] "
-        "[--education EDUCATION] [--residence RESIDENCE] [--hometown HOMETOWN] "
-        "[--exact-relation EXACT_RELATION] [-h] [--json]"
-    )
+    # fr add
+    fr_create_parser = fr_subparsers.add_parser("add", help="Add FigureAndRelation")
+    fr_create_parser.usage = "immortality fr add [-h] [--json]"
     add_json(fr_create_parser)
-    fr_create_parser.add_argument("--name", required=True, help="人物姓名")
-    fr_create_parser.add_argument(
-        "--gender", required=True, help="性别（male/female/other）"
-    )
-    fr_create_parser.add_argument(
-        "--role",
-        required=True,
-        help="角色（self/family/friend/mentor/colleague/partner/public_figure/stranger）",
-    )
-    fr_create_parser.add_argument("--mbti", required=False, help="MBTI（如 ENTJ）")
-    fr_create_parser.add_argument("--birthday", required=False, help="生日")
-    fr_create_parser.add_argument("--occupation", required=False, help="职业")
-    fr_create_parser.add_argument("--education", required=False, help="教育背景")
-    fr_create_parser.add_argument("--residence", required=False, help="常住地")
-    fr_create_parser.add_argument("--hometown", required=False, help="家乡")
-    fr_create_parser.add_argument(
-        "--exact-relation", required=False, help="精确关系描述"
-    )
-    fr_create_parser.set_defaults(func=FRCreateCMD)
+    fr_create_parser.set_defaults(func=createFRCLI)
 
-    fr_list_parser = fr_subparsers.add_parser("list", help="查看全部 FR")
+    # fr list
+    fr_list_parser = fr_subparsers.add_parser(
+        "list", help="List all FigureAndRelations"
+    )
     fr_list_parser.usage = "immortality fr list [-h] [--json]"
     add_json(fr_list_parser)
-    fr_list_parser.set_defaults(func=FRListCMD)
+    fr_list_parser.set_defaults(func=listAllFRsCLI)
+
+    # fr show
+    fr_show_parser = fr_subparsers.add_parser("show", help="Show full FR context")
+    fr_show_parser.usage = (
+        "immortality fr show --id <id> [--query <query>] [-h] [--json]"
+    )
+    add_json(fr_show_parser)
+    fr_show_parser.add_argument(
+        "--id", required=True, type=int, help="FigureAndRelation ID"
+    )
+    fr_show_parser.add_argument(
+        "--query",
+        required=False,
+        help="(Optional) Recall query for fine-grained feeds (personality / interaction style / procedural info / memory detail)",
+    )
+    fr_show_parser.set_defaults(func=showFRCLI)
+
+    # fr sync_feeds
+    fr_sync_feeds_parser = fr_subparsers.add_parser(
+        "sync_feeds",
+        help="Sync fine-grained feeds (personality / interaction style / procedural info / memory detail) to FR core fields",
+    )
+    fr_sync_feeds_parser.usage = "immortality fr sync_feeds [--id <id>] [-h] [--json]"
+    add_json(fr_sync_feeds_parser)
+    fr_sync_feeds_parser.add_argument(
+        "--id",
+        required=False,
+        type=int,
+        help="(Optional) FigureAndRelation ID, sync all FRs if omitted",
+    )
+    fr_sync_feeds_parser.set_defaults(func=syncFeedsToFRCoreCLI)
 
 
-def FRCreateCMD(args: Namespace) -> int:
+def createFRCLI(args: Namespace) -> int:
+    """
+    创建 FigureAndRelation
+    """
+
+    def _resolveText(
+        arg_value: str | None, label: str, required: bool = False
+    ) -> str | None:
+        """
+        解析文本输入
+        """
+        if isinstance(arg_value, str) and arg_value.strip() != "":
+            return arg_value.strip()
+        while True:
+            value = input(f"{label}: ").strip()
+            if value != "":
+                return value
+            if required:
+                print(f"{label} cannot be empty, please input again.")
+                continue
+            return None
+
+    def _resolveEnum(
+        arg_value: str | None,
+        label: str,
+        enum_values: list[str],
+        allow_empty: bool = False,
+    ) -> str | None:
+        """
+        解析枚举输入
+        """
+        if isinstance(arg_value, str) and arg_value.strip() != "":
+            return arg_value.strip()
+        choices = enum_values[:]
+        if allow_empty:
+            choices = ["(Skip)"] + choices
+
+        try:
+            selected = questionary.select(
+                message=f"{label}:",
+                choices=choices,
+                use_indicator=True,
+            ).ask()
+        except KeyboardInterrupt as err:
+            raise CLIError("Input canceled", exit_code=130) from err
+
+        if selected is None:
+            raise CLIError("Input canceled", exit_code=130)
+        if allow_empty and selected == "(Skip)":
+            return None
+        return str(selected)
+
     user_id = getUserIdFromLocalSession()
 
-    gender = parseEnum(Gender, args.gender)
+    name = _resolveText(getattr(args, "name", None), "Name", required=True)
+
+    selected_gender = _resolveEnum(
+        getattr(args, "gender", None),
+        "Gender",
+        [item.value for item in Gender],
+        allow_empty=False,
+    )
+    gender = parseEnum(Gender, selected_gender)
     if not isinstance(gender, Gender):
         raise CLIError(
-            f"无效 gender：{args.gender}，可选值：{', '.join([g.value for g in Gender])}",
+            f"Invalid gender",
             exit_code=2,
         )
 
-    figure_role = parseEnum(FigureRole, args.role)
+    selected_role = _resolveEnum(
+        getattr(args, "role", None),
+        "Role",
+        [item.value for item in FigureRole],
+        allow_empty=False,
+    )
+    figure_role = parseEnum(FigureRole, selected_role)
     if not isinstance(figure_role, FigureRole):
         raise CLIError(
-            f"无效 role：{args.role}，可选值：{', '.join([r.value for r in FigureRole])}",
+            f"Invalid role",
             exit_code=2,
         )
 
+    exact_relation = _resolveText(
+        getattr(args, "exact_relation", None), "Exact Relation (Optional)"
+    )
+
     figure_mbti = None
-    if args.mbti:
-        mbti = parseEnum(MBTI, args.mbti.upper())
+    selected_mbti = _resolveEnum(
+        getattr(args, "mbti", None),
+        "MBTI (Optional)",
+        [item.value for item in MBTI],
+        allow_empty=True,
+    )
+    if selected_mbti:
+        mbti = parseEnum(MBTI, selected_mbti.upper())
         if not isinstance(mbti, MBTI):
             raise CLIError(
-                f"无效 mbti：{args.mbti}，可选值：{', '.join([m.value for m in MBTI])}",
+                f"Invalid mbti",
                 exit_code=2,
             )
         figure_mbti = mbti
 
-    result = addFigureAndRelation(
+    birthday = _resolveText(getattr(args, "birthday", None), "Birthday (Optional)")
+    occupation = _resolveText(
+        getattr(args, "occupation", None), "Occupation (Optional)"
+    )
+    education = _resolveText(getattr(args, "education", None), "Education (Optional)")
+    residence = _resolveText(getattr(args, "residence", None), "Residence (Optional)")
+    hometown = _resolveText(getattr(args, "hometown", None), "Hometown (Optional)")
+
+    res = addFigureAndRelation(
         user_id=user_id,
-        figure_name=args.name,
+        figure_name=name,
         figure_gender=gender,
         figure_role=figure_role,
         figure_mbti=figure_mbti,
-        figure_birthday=args.birthday,
-        figure_occupation=args.occupation,
-        figure_education=args.education,
-        figure_residence=args.residence,
-        figure_hometown=args.hometown,
-        exact_relation=args.exact_relation,
+        figure_birthday=birthday,
+        figure_occupation=occupation,
+        figure_education=education,
+        figure_residence=residence,
+        figure_hometown=hometown,
+        exact_relation=exact_relation,
     )
-    printServiceResInCLI(result, as_json=args.json)
-    return 0 if result.get("status") == 200 else 1
+    printServiceResInCLI(res, as_json=args.json)
+    return 0 if res.get("status") == 200 else 1
 
 
-def FRListCMD(args: Namespace) -> int:
+def listAllFRsCLI(args: Namespace) -> int:
     user_id = getUserIdFromLocalSession()
-    result = getAllFigureAndRelations(user_id=user_id)
-    printServiceResInCLI(result, as_json=args.json)
-    return 0 if result.get("status") == 200 else 1
+    res = getAllFigureAndRelations(user_id=user_id)
+    frs = res.get("figure_and_relations", [])
+
+    if args.json:
+        printServiceResInCLI(res, as_json=True)
+    else:
+        printTableInCLI(frs)
+
+    return 0 if res.get("status") == 200 else 1
+
+
+def showFRCLI(args: Namespace) -> int:
+    """
+    查看完整 FR 画像
+    """
+    user_id = getUserIdFromLocalSession()
+    fr_id = getattr(args, "id", None)
+    if not isinstance(fr_id, int):
+        raise CLIError("Invalid fr id", exit_code=2)
+
+    query = getattr(args, "query", None)
+    if query is not None and (not isinstance(query, str) or query.strip() == ""):
+        raise CLIError("query must be a non-empty string", exit_code=2)
+    normalized_query = query.strip() if isinstance(query, str) else None
+
+    res = asyncio.run(
+        getFRAllContext(user_id=user_id, fr_id=fr_id, query=normalized_query)
+    )
+    if args.json:
+        printServiceResInCLI(res, as_json=True)
+        return 0 if res.get("status") == 200 else 1
+
+    if res.get("status") != 200:
+        printServiceResInCLI(res, as_json=False)
+        return 1
+
+    sections = [
+        res.get("persona"),
+        res.get("recalled_personality"),
+        res.get("recalled_interaction_style"),
+        res.get("recalled_procedural_info"),
+        res.get("recalled_memory"),
+    ]
+    markdown_parts = [
+        part.strip()
+        for part in sections
+        if isinstance(part, str) and part.strip() != ""
+    ]
+    if len(markdown_parts) == 0:
+        printServiceResInCLI(
+            {
+                "status": 200,
+                "message": "Get FigureAndRelation all context success (empty markdown)",
+            },
+            as_json=False,
+        )
+        return 0
+
+    printMarkdownInCLI(markdown_parts)
+    return 0
+
+
+def syncFeedsToFRCoreCLI(args: Namespace) -> int:
+    """
+    同步细粒度 feeds 到 FigureAndRelation 核心字段
+    """
+    user_id = getUserIdFromLocalSession()
+    fr_id = getattr(args, "id", None)
+    if fr_id is not None:
+        res = asyncio.run(syncFeedsToFRCore(user_id=user_id, fr_id=fr_id))
+    else:
+        res = asyncio.run(syncAllFeedsToFRCore(user_id=user_id))
+
+    printServiceResInCLI(res, as_json=args.json)
+    return 0 if res.get("status") == 200 else 1

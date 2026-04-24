@@ -1,6 +1,8 @@
 import json
 from typing import Any, Literal
 from tabulate import tabulate
+from rich.console import Console
+from rich.markdown import Markdown
 
 from src.services.user import getUserIdByAccessToken
 from src.cli.session import clearLocalSession, loadLocalSession
@@ -55,13 +57,64 @@ def printServiceResInCLI(data: dict[str, Any], as_json: bool) -> None:
     immortalityPrint(f"[{label}] {message}", type=label)
 
 
-def printDictAsTableInCLI(data: dict[str, Any]) -> None:
+def printTableInCLI(data: dict[str, Any] | list[dict[str, Any]]) -> None:
     """
-    将字典渲染为表格打印
+    将字典或对象数组渲染为表格打印
     """
+    if isinstance(data, dict):
+        rows = [[str(key), stringifyValue(value)] for key, value in data.items()]
+        table = tabulate(rows, headers=["Field", "Value"], tablefmt="github")
+        print(f"\n{table}\n")
+        return
 
-    rows = [[str(key), stringifyValue(value)] for key, value in data.items()]
-    print(f"\n{tabulate(rows, headers=["Field", "Value"], tablefmt="github")}\n")
+    if isinstance(data, list):
+        if len(data) == 0:
+            immortalityPrint("[info] Empty list", type="info")
+            return
+
+        # 仅支持对象数组；若元素不是对象则回退为单列表展示
+        if not all(isinstance(item, dict) for item in data):
+            rows = [[stringifyValue(item)] for item in data]
+            table = tabulate(rows, headers=["Value"], tablefmt="github")
+            print(f"\n{table}\n")
+            return
+
+        headers: list[str] = []
+        for item in data:
+            for key in item.keys():
+                key_str = str(key)
+                if key_str not in headers:
+                    headers.append(key_str)
+
+        rows = [
+            [stringifyValue(item.get(header)) for header in headers] for item in data
+        ]
+        table = tabulate(rows, headers=headers, tablefmt="github")
+        print(f"\n{table}\n")
+
+
+def printMarkdownInCLI(markdown_text: str | list[str]) -> None:
+    """
+    渲染 markdown 内容并输出到 CLI
+    """
+    if isinstance(markdown_text, list):
+        parts = [
+            part.strip()
+            for part in markdown_text
+            if isinstance(part, str) and part.strip() != ""
+        ]
+        if len(parts) == 0:
+            immortalityPrint("[info] Empty markdown", type="info")
+            return
+        content = "\n\n---\n\n".join(parts)
+    else:
+        content = markdown_text.strip() if isinstance(markdown_text, str) else ""
+        if content == "":
+            immortalityPrint("[info] Empty markdown", type="info")
+            return
+
+    console = Console()
+    console.print(Markdown(content))
 
 
 def getUserIdFromLocalSession() -> int:

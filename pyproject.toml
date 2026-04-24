@@ -29,6 +29,8 @@ dependencies = [
     "vikingdb-python-sdk>=0.1.15",
     "pyinstaller>=6.19.0",
     "tabulate>=0.9.0",
+    "questionary>=2.1.0",
+    "rich>=14.2.0",
 ]
 
 [project.scripts]
