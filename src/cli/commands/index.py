@@ -1,6 +1,5 @@
 import re
 import sys
-import tomllib
 import getpass
 import uuid
 from pathlib import Path
@@ -8,6 +7,7 @@ from argparse import Namespace, ArgumentParser, Action, _SubParsersAction
 from typing import Callable
 from typing import Any
 from importlib import metadata
+from importlib import resources
 from sqlalchemy import text
 
 from src.cli.utils import immortalityPrint, printServiceResInCLI
@@ -88,32 +88,17 @@ def runDoctorCheck() -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
     healthy = True
     guidance: list[str] = []
-    project_root = Path(__file__).resolve().parents[3]
-    pyproject_path = project_root / "pyproject.toml"
-    env_path = project_root / ".env"
+    env_path = Path.cwd() / ".env"
 
-    # 1) Python 版本检查（以 pyproject.toml 的 requires-python 为准）
+    # 1) Python 版本检查
     python_ok = True
     python_detail = ""
-    min_py = None
-    requires_python = ""
-    try:
-        with pyproject_path.open("rb") as f:
-            pyproject = tomllib.load(f)
-        requires_python = str(pyproject.get("project", {}).get("requires-python", ""))
-        match = re.search(r">=\s*(\d+)\.(\d+)", requires_python)
-        if match:
-            min_py = (int(match.group(1)), int(match.group(2)))
-            current = (sys.version_info.major, sys.version_info.minor)
-            python_ok = current >= min_py
-            python_detail = (
-                f"current={current[0]}.{current[1]}, required>={min_py[0]}.{min_py[1]}"
-            )
-        else:
-            python_detail = f"unrecognized requires-python: {requires_python}"
-    except Exception as err:
-        python_ok = False
-        python_detail = f"failed to parse pyproject.toml: {err}"
+    min_py = (3, 13)
+    current = (sys.version_info.major, sys.version_info.minor)
+    python_ok = current >= min_py
+    python_detail = (
+        f"current={current[0]}.{current[1]}, required>={min_py[0]}.{min_py[1]}"
+    )
 
     checks.append({"item": "python:version", "ok": python_ok, "detail": python_detail})
     healthy = healthy and python_ok
@@ -128,7 +113,7 @@ def runDoctorCheck() -> dict[str, Any]:
     healthy = healthy and env_exists
     if not env_exists:
         guidance.append(
-            "`.env` is missing in the project root. Please create it and fill required configs."
+            "`.env` is missing in current working directory. Please run `immortality setup` first."
         )
 
     required_envs = [
@@ -216,14 +201,12 @@ def runDoctorCheck() -> dict[str, Any]:
             + (" ..." if len(missing_envs) > 10 else "")
         )
 
-    # 3) 依赖安装完整性检查（以 pyproject.toml 的 project.dependencies 为准）
+    # 3) 依赖安装完整性检查（优先使用已安装包元数据）
     dependencies_ok = True
     missing_deps: list[str] = []
     dep_parse_error = None
     try:
-        with pyproject_path.open("rb") as f:
-            pyproject = tomllib.load(f)
-        dependencies: list[str] = pyproject.get("project", {}).get("dependencies", [])
+        dependencies: list[str] = metadata.requires("digital-immortality") or []
         for dep in dependencies:
             # 例：python-jose[cryptography]>=3.5.0 -> python-jose
             pkg_name = re.split(r"[<>=!~\s;]", dep, maxsplit=1)[0]
@@ -235,6 +218,10 @@ def runDoctorCheck() -> dict[str, Any]:
             except metadata.PackageNotFoundError:
                 dependencies_ok = False
                 missing_deps.append(pkg_name)
+    except metadata.PackageNotFoundError:
+        # 开发态可能未安装为分发包，此时跳过依赖元数据检查
+        dependencies_ok = True
+        dep_parse_error = "distribution metadata not found, dependency check skipped"
     except Exception as err:
         dependencies_ok = False
         dep_parse_error = str(err)
@@ -310,12 +297,9 @@ def setupCLI(args: Namespace) -> int:
             return arg_value.strip()
         return getpass.getpass(f"{label}: ").strip()
 
-    project_root = Path(__file__).resolve().parents[3]
-    env_example_path = project_root / ".env.example"
-    env_path = project_root / ".env"
-
-    if not env_example_path.exists():
-        raise CLIError("`.env.example` not found in project root", exit_code=1)
+    cwd = Path.cwd()
+    local_env_example_path = cwd / ".env.example"
+    env_path = cwd / ".env"
 
     arg_db_user = getattr(args, "db_user", None)
     arg_db_password = getattr(args, "db_password", None)
@@ -365,7 +349,19 @@ def setupCLI(args: Namespace) -> int:
         "lark_card_template_id": lark_card_template_id,
     }
 
-    template = env_example_path.read_text(encoding="utf-8")
+    if local_env_example_path.exists():
+        template = local_env_example_path.read_text(encoding="utf-8")
+    else:
+        try:
+            template = (
+                resources.files("src.cli")
+                .joinpath("assets/env.example")
+                .read_text(encoding="utf-8")
+            )
+        except Exception as err:
+            raise CLIError(
+                f"Cannot load `.env.example` template from package: {err}", exit_code=1
+            ) from err
     output = template
     for key, value in values.items():
         output = output.replace(f"<{key}>", value)
