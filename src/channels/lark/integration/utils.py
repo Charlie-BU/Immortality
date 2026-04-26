@@ -83,7 +83,9 @@ def sendCard2OpenId(
     """
     LARK_CARD_TEMPLATE_ID = os.getenv("LARK_CARD_TEMPLATE_ID")
     if not LARK_CARD_TEMPLATE_ID:
-        logger.error("LARK_CARD_TEMPLATE_ID is not set")
+        logger.warning("LARK_CARD_TEMPLATE_ID is not set")
+        # 降级到 sendText2OpenId
+        sendText2OpenId(open_id, f"『Immortality』{title}\n{content}")
         return
 
     response = sendCard(
@@ -103,3 +105,6 @@ def sendCard2OpenId(
         logger.warning(
             f"Fail to send card to open_id: {open_id}, code: {response.code}, msg: {response.msg}"
         )
+        # 降级到 sendText2OpenId
+        sendText2OpenId(open_id, f"『Immortality』{title}\n{content}")
+        return

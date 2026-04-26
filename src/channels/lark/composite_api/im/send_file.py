@@ -29,78 +29,84 @@ class SendFileResponse(BaseResponse):
 
 # 发送文件消息
 def sendFile(client: lark.Client, request: SendFileRequest) -> SendFileResponse:
-    # 上传文件
-    create_file_req = (
-        CreateFileRequest.builder()
-        .request_body(
-            CreateFileRequestBody.builder()
-            .file_type(request.get("file_type"))
-            .file_name(request.get("file_name"))
-            .duration(request.get("duration"))
-            .file(request.get("file"))
+    try:
+        # 上传文件
+        create_file_req = (
+            CreateFileRequest.builder()
+            .request_body(
+                CreateFileRequestBody.builder()
+                .file_type(request.get("file_type"))
+                .file_name(request.get("file_name"))
+                .duration(request.get("duration"))
+                .file(request.get("file"))
+                .build()
+            )
             .build()
         )
-        .build()
-    )
 
-    create_file_resp = client.im.v1.file.create(create_file_req)
+        create_file_resp = client.im.v1.file.create(create_file_req)
 
-    if not create_file_resp.success():
-        lark.logger.error(
-            f"client.im.v1.file.create failed, "
-            f"code: {create_file_resp.code}, "
-            f"msg: {create_file_resp.msg}, "
-            f"log_id: {create_file_resp.get_log_id()}"
-        )
-        response = SendFileResponse()
-        response.code = create_file_resp.code
-        response.msg = create_file_resp.msg
-        response.create_file_response = create_file_resp.data
-        return response
+        if not create_file_resp.success():
+            lark.logger.error(
+                f"client.im.v1.file.create failed, "
+                f"code: {create_file_resp.code}, "
+                f"msg: {create_file_resp.msg}, "
+                f"log_id: {create_file_resp.get_log_id()}"
+            )
+            response = SendFileResponse()
+            response.code = create_file_resp.code
+            response.msg = create_file_resp.msg
+            response.create_file_response = create_file_resp.data
+            return response
 
-    # 发送消息
-    option = (
-        lark.RequestOption.builder()
-        .headers({"X-Tt-Logid": create_file_resp.get_log_id()})
-        .build()
-    )
-    create_message_req = (
-        CreateMessageRequest.builder()
-        .receive_id_type(request.get("receive_id_type"))
-        .request_body(
-            CreateMessageRequestBody.builder()
-            .receive_id(request.get("receive_id"))
-            .msg_type("file")
-            .content(lark.JSON.marshal(create_file_resp.data))
-            .uuid(request.get("uuid"))
+        # 发送消息
+        option = (
+            lark.RequestOption.builder()
+            .headers({"X-Tt-Logid": create_file_resp.get_log_id()})
             .build()
         )
-        .build()
-    )
-
-    create_message_resp: CreateMessageResponse = client.im.v1.message.create(
-        create_message_req, option
-    )
-
-    if not create_message_resp.success():
-        lark.logger.error(
-            f"client.im.v1.message.create failed, "
-            f"code: {create_message_resp.code}, "
-            f"msg: {create_message_resp.msg}, "
-            f"log_id: {create_message_resp.get_log_id()}"
+        create_message_req = (
+            CreateMessageRequest.builder()
+            .receive_id_type(request.get("receive_id_type"))
+            .request_body(
+                CreateMessageRequestBody.builder()
+                .receive_id(request.get("receive_id"))
+                .msg_type("file")
+                .content(lark.JSON.marshal(create_file_resp.data))
+                .uuid(request.get("uuid"))
+                .build()
+            )
+            .build()
         )
+
+        create_message_resp: CreateMessageResponse = client.im.v1.message.create(
+            create_message_req, option
+        )
+
+        if not create_message_resp.success():
+            lark.logger.error(
+                f"client.im.v1.message.create failed, "
+                f"code: {create_message_resp.code}, "
+                f"msg: {create_message_resp.msg}, "
+                f"log_id: {create_message_resp.get_log_id()}"
+            )
+            response = SendFileResponse()
+            response.code = create_message_resp.code
+            response.msg = create_message_resp.msg
+            response.create_file_response = create_file_resp.data
+            response.create_message_response = create_message_resp.data
+            return response
+
+        # 返回结果
         response = SendFileResponse()
-        response.code = create_message_resp.code
-        response.msg = create_message_resp.msg
+        response.code = 0
+        response.msg = "success"
         response.create_file_response = create_file_resp.data
         response.create_message_response = create_message_resp.data
         return response
-
-    # 返回结果
-    response = SendFileResponse()
-    response.code = 0
-    response.msg = "success"
-    response.create_file_response = create_file_resp.data
-    response.create_message_response = create_message_resp.data
-
-    return response
+    except Exception as exc:
+        lark.logger.exception(f"sendFile failed with exception: {exc}")
+        response = SendFileResponse()
+        response.code = -1
+        response.msg = f"exception: {exc}"
+        return response

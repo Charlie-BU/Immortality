@@ -25,76 +25,82 @@ class SendImageResponse(BaseResponse):
 
 # 发送图片消息
 def sendImage(client: lark.Client, request: SendImageRequest) -> SendImageResponse:
-    # 上传图片
-    create_image_req = (
-        CreateImageRequest.builder()
-        .request_body(
-            CreateImageRequestBody.builder()
-            .image_type("message")
-            .image(request.get("image"))
+    try:
+        # 上传图片
+        create_image_req = (
+            CreateImageRequest.builder()
+            .request_body(
+                CreateImageRequestBody.builder()
+                .image_type("message")
+                .image(request.get("image"))
+                .build()
+            )
             .build()
         )
-        .build()
-    )
 
-    create_image_resp = client.im.v1.image.create(create_image_req)
+        create_image_resp = client.im.v1.image.create(create_image_req)
 
-    if not create_image_resp.success():
-        lark.logger.error(
-            f"client.im.v1.image.create failed, "
-            f"code: {create_image_resp.code}, "
-            f"msg: {create_image_resp.msg}, "
-            f"log_id: {create_image_resp.get_log_id()}"
-        )
-        response = SendImageResponse()
-        response.code = create_image_resp.code
-        response.msg = create_image_resp.msg
-        response.create_image_response = create_image_resp.data
-        return response
+        if not create_image_resp.success():
+            lark.logger.error(
+                f"client.im.v1.image.create failed, "
+                f"code: {create_image_resp.code}, "
+                f"msg: {create_image_resp.msg}, "
+                f"log_id: {create_image_resp.get_log_id()}"
+            )
+            response = SendImageResponse()
+            response.code = create_image_resp.code
+            response.msg = create_image_resp.msg
+            response.create_image_response = create_image_resp.data
+            return response
 
-    # 发送消息
-    option = (
-        lark.RequestOption.builder()
-        .headers({"X-Tt-Logid": create_image_resp.get_log_id()})
-        .build()
-    )
-    create_message_req = (
-        CreateMessageRequest.builder()
-        .receive_id_type(request.get("receive_id_type"))
-        .request_body(
-            CreateMessageRequestBody.builder()
-            .receive_id(request.get("receive_id"))
-            .msg_type("image")
-            .content(lark.JSON.marshal(create_image_resp.data))
-            .uuid(request.get("uuid"))
+        # 发送消息
+        option = (
+            lark.RequestOption.builder()
+            .headers({"X-Tt-Logid": create_image_resp.get_log_id()})
             .build()
         )
-        .build()
-    )
-
-    create_message_resp: CreateMessageResponse = client.im.v1.message.create(
-        create_message_req, option
-    )
-
-    if not create_message_resp.success():
-        lark.logger.error(
-            f"client.im.v1.message.create failed, "
-            f"code: {create_message_resp.code}, "
-            f"msg: {create_message_resp.msg}, "
-            f"log_id: {create_message_resp.get_log_id()}"
+        create_message_req = (
+            CreateMessageRequest.builder()
+            .receive_id_type(request.get("receive_id_type"))
+            .request_body(
+                CreateMessageRequestBody.builder()
+                .receive_id(request.get("receive_id"))
+                .msg_type("image")
+                .content(lark.JSON.marshal(create_image_resp.data))
+                .uuid(request.get("uuid"))
+                .build()
+            )
+            .build()
         )
+
+        create_message_resp: CreateMessageResponse = client.im.v1.message.create(
+            create_message_req, option
+        )
+
+        if not create_message_resp.success():
+            lark.logger.error(
+                f"client.im.v1.message.create failed, "
+                f"code: {create_message_resp.code}, "
+                f"msg: {create_message_resp.msg}, "
+                f"log_id: {create_message_resp.get_log_id()}"
+            )
+            response = SendImageResponse()
+            response.code = create_message_resp.code
+            response.msg = create_message_resp.msg
+            response.create_image_response = create_image_resp.data
+            response.create_message_response = create_message_resp.data
+            return response
+
+        # 返回结果
         response = SendImageResponse()
-        response.code = create_message_resp.code
-        response.msg = create_message_resp.msg
+        response.code = 0
+        response.msg = "success"
         response.create_image_response = create_image_resp.data
         response.create_message_response = create_message_resp.data
         return response
-
-    # 返回结果
-    response = SendImageResponse()
-    response.code = 0
-    response.msg = "success"
-    response.create_image_response = create_image_resp.data
-    response.create_message_response = create_message_resp.data
-
-    return response
+    except Exception as exc:
+        lark.logger.exception(f"sendImage failed with exception: {exc}")
+        response = SendImageResponse()
+        response.code = -1
+        response.msg = f"exception: {exc}"
+        return response

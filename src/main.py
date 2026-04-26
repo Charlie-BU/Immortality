@@ -31,7 +31,7 @@ def main():
     """
     入口
     """
-    from src.channels.lark.websocket_service import startLarkService
+    from src.channels.lark.websocket import startLarkService
 
     startLarkService()
 
