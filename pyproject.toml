@@ -48,4 +48,8 @@ where = ["."]
 include = ["src*"]
 
 [tool.setuptools.package-data]
-"src.cli" = ["assets/.env.example"]
+"src.cli" = [
+    "assets/.env.example",
+    "assets/docker-compose.yml",
+    "assets/init-db.sh",
+]
