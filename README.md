@@ -34,7 +34,7 @@ uv tool install digital-immortality --default-index https://pypi.org/simple
 未安装 uv:
 
 ```bash
-pip install digital-immortality --default-index https://pypi.org/simple
+pip install digital-immortality -i https://pypi.org/simple
 ```
 
 安装完成后，重启 terminal，确认命令可用：
@@ -66,10 +66,26 @@ immortality doctor
 immortality setup
 ```
 
-该命令会引导你填写必要配置，并在本地创建目录：
+该命令会先让你选择数据库配置方式：
+
+- `Docker setup (recommended)`：推荐。自动拉起 PostgreSQL 并填充本地数据库连接参数
+- `Manual setup`：手动填写数据库连接参数（保持旧行为）
+
+当你选择 `Docker setup (recommended)` 时，CLI 会自动完成：
+
+- 检查 `docker` / `docker compose`（兼容 `docker-compose`）
+- 在 `~/.immortality/` 写入并使用 docker 资源文件
+- 启动 PostgreSQL（镜像为 `pgvector/pgvector:pg16`）
+- 确保存在两个数据库：
+  - `immortality`
+  - `immortality_checkpoint`
+- 初始化 `vector` 扩展（`CREATE EXTENSION IF NOT EXISTS vector;`）
+
+然后继续引导你填写其余必要配置，并在本地创建目录：
 
 - `~/.immortality/.env`：环境变量配置文件
 - `~/.immortality/logs/`：后续服务运行日志目录
+- `~/.immortality/docker-compose.yml`：Docker 模式数据库编排文件
 
 ## 4. 再次执行 doctor（预期通过）
 
@@ -94,3 +110,28 @@ immortality lark-service start
 - `lark-service start` 会先自动执行一次 `doctor`
 - 如果检查失败，服务不会启动，并直接输出修复提示
 - 启动成功后，日志会持续写入 `~/.immortality/logs/`
+
+## 6. Docker 常见问题
+
+### 6.1 collation version mismatch
+
+若你在 `immortality setup`（Docker 模式）看到类似错误：
+
+- `database "... " has a collation version mismatch`
+- `template database "template1" has a collation version mismatch`
+
+通常是因为你复用了旧的 PostgreSQL volume（历史镜像与当前镜像底层库版本不一致）。
+
+本地开发建议直接重建 volume（会清空本地数据库数据）：
+
+```bash
+docker compose -f ~/.immortality/docker-compose.yml down -v
+docker compose -f ~/.immortality/docker-compose.yml up -d postgres
+```
+
+然后重新执行：
+
+```bash
+immortality setup
+immortality doctor
+```

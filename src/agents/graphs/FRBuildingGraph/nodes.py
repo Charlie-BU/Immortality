@@ -174,7 +174,7 @@ async def nodePreprocessInput(state: FRBuildingGraphState) -> dict:
         HumanMessage(content=user_prompt),
     ]
     response = await llm.ainvoke(messages)
-    print(f"\n{response.content}\n")
+
     try:
         parsed_res = json.loads(response.content)
     except json.JSONDecodeError:

@@ -650,6 +650,10 @@ def initDatabaseIfNeeded():
     logger.info("Checking if database needs to be initialized...")
     engine = _buildEngine()
     try:
+        # 保证 pgvector 扩展存在
+        with engine.begin() as conn:
+            conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector;")
+
         inspector = inspect(engine)
         if not inspector.get_table_names():
             Base.metadata.create_all(bind=engine)

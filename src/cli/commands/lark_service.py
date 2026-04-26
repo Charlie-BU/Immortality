@@ -2,7 +2,11 @@ from argparse import Namespace, ArgumentParser, Action, _SubParsersAction
 from typing import Callable
 
 from src.cli.commands.index import runDoctorCheck
-from src.cli.utils import immortalityPrint, printServiceResInCLI
+from src.cli.utils import (
+    getUserIdFromLocalSession,
+    immortalityPrint,
+    printServiceResInCLI,
+)
 
 
 def registerLarkServiceSubparser(
@@ -33,6 +37,9 @@ def startLarkServiceCLI(args: Namespace) -> int:
     启动 lark 服务（先执行 doctor，通过后才启动）
     """
     from src.main import main
+
+    # 登录校验
+    getUserIdFromLocalSession()
 
     doctor_result = runDoctorCheck()
     if doctor_result.get("status") != 200:

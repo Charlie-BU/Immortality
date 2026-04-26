@@ -2,18 +2,24 @@ import re
 import sys
 import getpass
 import uuid
+import socket
+import time
+import subprocess
 from pathlib import Path
 from argparse import Namespace, ArgumentParser, Action, _SubParsersAction
-from typing import Callable
-from typing import Any
-from importlib import metadata
-from importlib import resources
+from typing import Callable, Any
+from importlib import metadata, resources
 from sqlalchemy import text
+import questionary
 
 from src.cli.utils import immortalityPrint, printServiceResInCLI
 from src.cli.utils import CLIError
-from src.cli.constants import IMMORTALITY_HOME_DIR, IMMORTALITY_ENV_PATH
+from src.cli.constants import (
+    IMMORTALITY_HOME_DIR,
+    IMMORTALITY_ENV_PATH,
+)
 from src.database.index import session
+from src.database.models import initDatabaseIfNeeded
 
 
 def registerTopSubparser(
@@ -256,7 +262,8 @@ def runDoctorCheck() -> dict[str, Any]:
     checks.append({"item": "database:connectivity", "ok": db_ok, "error": db_error})
     if not db_ok:
         guidance.append(
-            "Database connection failed. Please check `DATABASE_URI`, network, and DB service status."
+            "Database connection failed. Please check `DATABASE_URI`, network, and DB service status. "
+            "If you selected Docker mode in setup, ensure postgres container is running."
         )
 
     return {
@@ -283,6 +290,220 @@ def doctorCLI(args: Namespace) -> int:
     return 0 if result.get("status") == 200 else 1
 
 
+def _checkDocker() -> list[str] | None:
+    """
+    检查 Docker 是否正常工作
+    """
+    # 检查 docker 命令
+    try:
+        docker_check = subprocess.run(
+            ["docker", "--version"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as err:
+        raise CLIError(
+            "Docker command not found. Please install Docker Desktop first.",
+            exit_code=1,
+        ) from err
+    if docker_check.returncode != 0:
+        raise CLIError(
+            f"Docker is unavailable: {(docker_check.stderr or docker_check.stdout).strip()}",
+            exit_code=1,
+        )
+
+    # 检查 docker compose 命令
+    compose_cmd: list[str] | None = None
+    compose_check = subprocess.run(
+        ["docker", "compose", "version"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if compose_check.returncode == 0:
+        compose_cmd = ["docker", "compose"]
+    else:
+        try:
+            legacy_compose_check = subprocess.run(
+                ["docker-compose", "--version"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            legacy_compose_check = None
+        if legacy_compose_check and legacy_compose_check.returncode == 0:
+            compose_cmd = ["docker-compose"]
+
+    if compose_cmd is None:
+        raise CLIError(
+            "`docker compose` and `docker-compose` are both unavailable. "
+            "Please install Docker Compose first.",
+            exit_code=1,
+        )
+    return compose_cmd
+
+
+def _setupCheckpointDBIfNeeded():
+    """
+    配置 immortality_checkpoint 数据库
+    """
+    # 检查 immortality_checkpoint 数据库是否存在
+    check_checkpoint_db = subprocess.run(
+        [
+            "docker",
+            "exec",
+            "immortality-postgres",
+            "psql",
+            "-U",
+            "immortality",
+            "-d",
+            "immortality",
+            "-tAc",
+            "SELECT 1 FROM pg_database WHERE datname = 'immortality_checkpoint';",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if check_checkpoint_db.returncode != 0:
+        raise CLIError(
+            "PostgreSQL is running but failed to check `immortality_checkpoint` database: "
+            + (check_checkpoint_db.stderr or check_checkpoint_db.stdout).strip(),
+            exit_code=1,
+        )
+    checkpoint_exists = check_checkpoint_db.stdout.strip() == "1"
+
+    if not checkpoint_exists:
+        create_checkpoint_db = subprocess.run(
+            [
+                "docker",
+                "exec",
+                "immortality-postgres",
+                "psql",
+                "-U",
+                "immortality",
+                "-d",
+                "immortality",
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-c",
+                "CREATE DATABASE immortality_checkpoint;",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if create_checkpoint_db.returncode != 0:
+            raise CLIError(
+                "PostgreSQL is running but failed to create `immortality_checkpoint` database: "
+                + (create_checkpoint_db.stderr or create_checkpoint_db.stdout).strip(),
+                exit_code=1,
+            )
+
+
+def dockerDBSteup() -> dict[str, str]:
+    """
+    通过 Docker 配置 PostgreSQL 数据库
+    """
+    docker_compose_path = IMMORTALITY_HOME_DIR / "docker-compose.yml"
+    docker_init_sql_path = IMMORTALITY_HOME_DIR / "init-db.sh"
+
+    # 检查 Docker 是否正常工作
+    compose_cmd = _checkDocker()
+
+    # 加载 docker-compose.yml 模板
+    try:
+        compose_template = (
+            resources.files("src.cli")
+            .joinpath("assets/docker-compose.yml")
+            .read_text(encoding="utf-8")
+        )
+    except Exception as err:
+        raise CLIError(
+            f"Cannot load docker-compose template from package: {err}",
+            exit_code=1,
+        ) from err
+    try:
+        init_db_sql = (
+            resources.files("src.cli")
+            .joinpath("assets/init-db.sh")
+            .read_text(encoding="utf-8")
+        )
+    except Exception as err:
+        raise CLIError(
+            f"Cannot load init-db.sh template from package: {err}",
+            exit_code=1,
+        ) from err
+
+    try:
+        docker_compose_path.write_text(compose_template, encoding="utf-8")
+        docker_init_sql_path.write_text(init_db_sql, encoding="utf-8")
+    except OSError as err:
+        raise CLIError(
+            f"Cannot write docker assets into `{IMMORTALITY_HOME_DIR}`: {err}",
+            exit_code=1,
+        ) from err
+
+    # 检查完毕，启动 PostgreSQL 容器
+    immortalityPrint(
+        "Starting PostgreSQL with docker compose, please wait...", type="info"
+    )
+    compose_up = subprocess.run(
+        compose_cmd
+        + [
+            "-f",
+            str(docker_compose_path),
+            "up",
+            "-d",
+            "postgres",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if compose_up.returncode != 0:
+        raise CLIError(
+            "Failed to start PostgreSQL container with docker compose: "
+            + (compose_up.stderr or compose_up.stdout).strip(),
+            exit_code=1,
+        )
+
+    wait_seconds = 50
+    db_ready = False
+    for _ in range(wait_seconds):
+        try:
+            with socket.create_connection(("127.0.0.1", 5432), timeout=1):
+                db_ready = True
+                break
+        except OSError:
+            time.sleep(1)
+
+    if db_ready:
+        immortalityPrint(
+            "Docker container and PostgreSQL setup are ready", type="success"
+        )
+    else:
+        raise CLIError(
+            "PostgreSQL container started but 127.0.0.1:5432 is still unreachable. "
+            "Please check container logs first with "
+            f"`{' '.join(compose_cmd)} -f {docker_compose_path} logs postgres`. "
+            "If the issue persists, please set up PostgreSQL manually.",
+            exit_code=1,
+        )
+
+    # 配置 immortality_checkpoint 数据库
+    _setupCheckpointDBIfNeeded()
+
+    return {
+        "db_user": "immortality",
+        "db_password": "immortality_password",
+        "db_host": "127.0.0.1",
+        "db_port": "5432",
+    }
+
+
 def setupCLI(args: Namespace) -> int:
     """
     配置环境变量
@@ -290,11 +511,13 @@ def setupCLI(args: Namespace) -> int:
 
     def _resolveText(arg_value: str | None, label: str) -> str:
         if isinstance(arg_value, str):
+            # 如果命令行参数有值，跳过交互输入直接返回
             return arg_value.strip()
         return input(f"{label}: ").strip()
 
     def _resolveSecret(arg_value: str | None, label: str) -> str:
         if isinstance(arg_value, str):
+            # 如果命令行参数有值，跳过交互输入直接返回
             return arg_value.strip()
         return getpass.getpass(f"{label}: ").strip()
 
@@ -309,6 +532,16 @@ def setupCLI(args: Namespace) -> int:
             exit_code=1,
         ) from err
 
+    database_config_mode = questionary.select(
+        "Choose database configuration mode",
+        choices=[
+            questionary.Choice("Docker setup (recommended)", value="docker"),
+            questionary.Choice("Manual setup", value="manual"),
+        ],
+    ).ask()
+    if database_config_mode is None:
+        raise CLIError("Setup cancelled by user.", exit_code=130)
+
     arg_db_user = getattr(args, "db_user", None)
     arg_db_password = getattr(args, "db_password", None)
     arg_db_host = getattr(args, "db_host", None)
@@ -321,10 +554,19 @@ def setupCLI(args: Namespace) -> int:
     arg_lark_app_secret = getattr(args, "lark_app_secret", None)
     arg_lark_card_template_id = getattr(args, "lark_card_template_id", None)
 
+    if database_config_mode == "docker":
+        docker_db_values = dockerDBSteup()
+        arg_db_user = arg_db_user or docker_db_values["db_user"]
+        arg_db_password = arg_db_password or docker_db_values["db_password"]
+        arg_db_host = arg_db_host or docker_db_values["db_host"]
+        arg_db_port = arg_db_port or docker_db_values["db_port"]
+
+    # 若通过 docker 配置数据库，db 配置无需手动交互
     db_user = _resolveText(arg_db_user, "db_user")
     db_password = _resolveSecret(arg_db_password, "db_password")
     db_host = _resolveText(arg_db_host, "db_host")
     db_port = _resolveText(arg_db_port, "db_port")
+
     login_secret = uuid.uuid4().hex
     ark_api_key = _resolveSecret(arg_ark_api_key, "ark_api_key")
     doubao_2_0_lite = _resolveText(
@@ -381,6 +623,8 @@ def setupCLI(args: Namespace) -> int:
             f"Cannot write env file `{env_path}`: {err}", exit_code=1
         ) from err
 
+    # 初始化数据库表
+    initDatabaseIfNeeded()
     printServiceResInCLI(
         {
             "status": 200,
