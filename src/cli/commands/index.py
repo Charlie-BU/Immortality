@@ -43,7 +43,7 @@ def registerTopSubparser(
         "[--db-user <db_user> --db-password <db_password> --db-host <db_host> --db-port <db_port> "
         "--ark-api-key <ark_api_key> "
         "--doubao-2-0-lite <endpoint_or_model_id> --doubao-2-0-mini <endpoint_or_model_id> "
-        "--embedding-endpoint-id <embedding_endpoint_id> "
+        "--embedding-endpoint-id <embedding_model_endpoint_or_model_id> "
         "--lark-app-id <lark_bot_app_id> --lark-app-secret <lark_bot_app_secret> "
         "--lark-card-template-id <lark_card_template_id>] "
         "[-h] [--json]"
@@ -65,12 +65,12 @@ def registerTopSubparser(
     setup_parser.add_argument(
         "--doubao-2-0-lite",
         required=False,
-        help="DOUBAO_2_0_LITE endpoint_id or model_id",
+        help="LITE_MODEL endpoint_id or model_id",
     )
     setup_parser.add_argument(
         "--doubao-2-0-mini",
         required=False,
-        help="DOUBAO_2_0_MINI endpoint_id or model_id (Can be the same as DOUBAO_2_0_LITE model, but not recommended)",
+        help="MINI_MODEL endpoint_id or model_id (Can be the same as LITE_MODEL model, but not recommended)",
     )
     setup_parser.add_argument(
         "--embedding-endpoint-id",
@@ -141,11 +141,11 @@ def runDoctorCheck() -> dict[str, Any]:
         "LOGIN_SECRET",
         "ARK_BASE_URL",
         "ARK_API_KEY",
-        "DOUBAO_2_0_LITE",
-        "DOUBAO_2_0_MINI",
+        "LITE_MODEL",
+        "MINI_MODEL",
         "EMBEDDING_MODEL_NAME",
         "EMBEDDING_BASE_URL",
-        "EMBEDDING_ENDPOINT_ID",
+        "EMBEDDING_MODEL",
         "LARK_APP_ID",
         "LARK_APP_SECRET",
         "LARK_CARD_TEMPLATE_ID",
@@ -560,7 +560,7 @@ def setupCLI(args: Namespace) -> int:
     arg_ark_api_key = getattr(args, "ark_api_key", None)
     arg_doubao_2_0_lite = getattr(args, "doubao_2_0_lite", None)
     arg_doubao_2_0_mini = getattr(args, "doubao_2_0_mini", None)
-    arg_embedding_endpoint_id = getattr(args, "embedding_endpoint_id", None)
+    arg_embedding_endpoint_id = getattr(args, "embedding_model_endpoint_or_model_id", None)
     arg_lark_app_id = getattr(args, "lark_app_id", None)
     arg_lark_app_secret = getattr(args, "lark_app_secret", None)
     arg_lark_card_template_id = getattr(args, "lark_card_template_id", None)
@@ -581,13 +581,13 @@ def setupCLI(args: Namespace) -> int:
     login_secret = uuid.uuid4().hex
     ark_api_key = _resolveSecret(arg_ark_api_key, "ark_api_key")
     doubao_2_0_lite = _resolveText(
-        arg_doubao_2_0_lite, "doubao_2_0_lite_endpoint_or_model_id"
+        arg_doubao_2_0_lite, "lite_model_endpoint_or_model_id"
     )
     doubao_2_0_mini = _resolveText(
-        arg_doubao_2_0_mini, "doubao_2_0_mini_endpoint_or_model_id"
+        arg_doubao_2_0_mini, "mini_model_endpoint_or_model_id"
     )
-    embedding_endpoint_id = _resolveText(
-        arg_embedding_endpoint_id, "embedding_endpoint_id"
+    embedding_model_endpoint_or_model_id = _resolveText(
+        arg_embedding_endpoint_id, "embedding_model_endpoint_or_model_id"
     )
     lark_app_id = _resolveText(arg_lark_app_id, "lark_bot_app_id")
     lark_app_secret = _resolveSecret(arg_lark_app_secret, "lark_bot_app_secret")
@@ -602,9 +602,9 @@ def setupCLI(args: Namespace) -> int:
         "db_port": db_port,
         "login_secret": login_secret,
         "ark_api_key": ark_api_key,
-        "doubao_2_0_lite_endpoint_or_model_id": doubao_2_0_lite,
-        "doubao_2_0_mini_endpoint_or_model_id": doubao_2_0_mini,
-        "embedding_endpoint_id": embedding_endpoint_id,
+        "lite_model_endpoint_or_model_id": doubao_2_0_lite,
+        "mini_model_endpoint_or_model_id": doubao_2_0_mini,
+        "embedding_model_endpoint_or_model_id": embedding_model_endpoint_or_model_id,
         "lark_bot_app_id": lark_app_id,
         "lark_bot_app_secret": lark_app_secret,
         "lark_card_template_id": lark_card_template_id,

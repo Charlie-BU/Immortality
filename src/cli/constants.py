@@ -1,4 +1,5 @@
 from pathlib import Path
+from importlib import metadata
 
 # ANSI colors
 ANSI_RESET = "\033[0m"
@@ -11,9 +12,19 @@ ANSI_RED = "\033[91m"
 ANSI_DIM = "\033[90m"
 ANSI_BOLD = "\033[1m"
 
+
+def _getCliVersion() -> str:
+    try:
+        return metadata.version("digital-immortality")
+    except metadata.PackageNotFoundError:
+        return "unknown"
+
+
 WELCOME_BANNER = (
     f"{ANSI_ORANGE}*{ANSI_RESET} "
-    f"{ANSI_WHITE}{ANSI_BOLD}Welcome to IMMORTALITY CLI{ANSI_RESET}"
+    f"{ANSI_WHITE}{ANSI_BOLD}Welcome to IMMORTALITY CLI{ANSI_RESET}\n"
+    f"{ANSI_ORANGE} {ANSI_RESET} "
+    f"{ANSI_DIM}Version {_getCliVersion()}{ANSI_RESET}"
 )
 
 IMMORTALITY_LOGO = f"""{ANSI_ORANGE}{ANSI_BOLD}

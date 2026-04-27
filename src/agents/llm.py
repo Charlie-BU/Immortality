@@ -24,7 +24,7 @@ class ArkLLMResponse(TypedDict):
 
 
 def prepareLLM(
-    model: Literal["DOUBAO_2_0_LITE", "DOUBAO_2_0_MINI"],
+    model: Literal["LITE_MODEL", "MINI_MODEL"],
     options: LLMOptions | None = None,
 ) -> ChatOpenAI:
     ARK_BASE_URL = os.getenv("ARK_BASE_URL", "")
@@ -73,7 +73,7 @@ async def ainvokeWithNoContext(
 
 # todo：暂不支持 ToolMessage
 async def arkAinvoke(
-    model: Literal["DOUBAO_2_0_LITE", "DOUBAO_2_0_MINI"],
+    model: Literal["LITE_MODEL", "MINI_MODEL"],
     messages: List[BaseMessage],
     model_options: LLMOptions = {},
     reasoning_content_in_ai_message: bool = True,  # 是否把 reasoning_content 放到 ai_message 中

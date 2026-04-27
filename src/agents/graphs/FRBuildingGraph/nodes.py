@@ -55,7 +55,7 @@ async def _compareFieldViaLLM(
     通过 LLM 对照字段值，返回冲突状态和冲突详情
     """
     llm = prepareLLM(
-        "DOUBAO_2_0_MINI",
+        "MINI_MODEL",
         options={
             "temperature": 0,
             "reasoning_effort": "minimal",
@@ -151,7 +151,7 @@ async def nodePreprocessInput(state: FRBuildingGraphState) -> dict:
 
     # LLM 预处理
     llm = prepareLLM(
-        "DOUBAO_2_0_LITE",
+        "LITE_MODEL",
         options={
             "temperature": 0,
             "reasoning_effort": "minimal",
@@ -305,7 +305,7 @@ async def nodeExtractFRIntrinsicCandidates(state: FRBuildingGraphState) -> dict:
 
     user_prompt = f"[figure_name]:\n{state['figure_and_relation'].get('figure_name', '')}\n\n[figure_role]:\n{state['figure_role'].value}\n\n[user_name]:\n{state['user_name']}\n\n[original_source_content]:\n{original_source_content}"
     llm = prepareLLM(
-        "DOUBAO_2_0_LITE",
+        "LITE_MODEL",
         options={
             "temperature": 0,
             "reasoning_effort": "low",
@@ -738,7 +738,7 @@ async def nodeExtractFineGrainedFeeds(state: FRBuildingGraphState) -> dict:
 
     # LLM 抽取
     llm = prepareLLM(
-        "DOUBAO_2_0_LITE",
+        "LITE_MODEL",
         options={
             "temperature": 0,
             "reasoning_effort": "low",
@@ -1355,7 +1355,7 @@ def nodeBuildFRBuildingGraphOutput(
 #         "errors": state.get("errors"),
 #     }
 #     llm = prepareLLM(
-#         "DOUBAO_2_0_LITE",
+#         "LITE_MODEL",
 #         options={
 #             "temperature": 0,
 #             "reasoning_effort": "low",

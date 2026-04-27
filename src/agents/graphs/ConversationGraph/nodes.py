@@ -64,7 +64,7 @@ async def _summarizeTrimmedMessages(
         return old_summary.strip()
 
     summary_llm = prepareLLM(
-        "DOUBAO_2_0_MINI",
+        "MINI_MODEL",
         options={
             "temperature": 0,
             "reasoning_effort": "minimal",
@@ -522,7 +522,7 @@ async def nodeCallLLM(state: ConversationGraphState) -> ConversationGraphOutput:
     messages_to_send += messages
 
     # 使用 Ark SDK 替换 LangChain ainvoke 拿reasoning_content
-    # llm: ChatOpenAI = prepareLLM(model="DOUBAO_2_0_LITE", options={
+    # llm: ChatOpenAI = prepareLLM(model="LITE_MODEL", options={
     #     "temperature": 0.3,
     #     "reasoning_effort": "low",
     # })
@@ -532,7 +532,7 @@ async def nodeCallLLM(state: ConversationGraphState) -> ConversationGraphOutput:
     logger.info(f"\nmessages_to_send:\n{messages_to_send}\n\n")
 
     resp = await arkAinvoke(
-        model="DOUBAO_2_0_LITE",
+        model="LITE_MODEL",
         messages=messages_to_send,
         model_options={
             "temperature": 0.3,

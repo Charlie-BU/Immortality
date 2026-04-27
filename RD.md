@@ -1219,7 +1219,7 @@ def langchain2OpenAIChatMessages(
 # 通过 Ark SDK ainvoke llm
 # todo：暂不支持 ToolMessage
 async def arkAinvoke(
-    model: Literal["DOUBAO_2_0_LITE", "DOUBAO_2_0_MINI"],
+    model: Literal["LITE_MODEL", "MINI_MODEL"],
     messages: List[BaseMessage],
     model_options: LLMOptions = {},
 ) -> ArkLLMResponse:
@@ -1309,7 +1309,7 @@ messages_to_send = [
 ] + state["messages"]
 
 resp = await arkAinvoke(
-    model="DOUBAO_2_0_LITE",
+    model="LITE_MODEL",
     messages=messages_to_send,
     model_options={
         "temperature": 0.3,

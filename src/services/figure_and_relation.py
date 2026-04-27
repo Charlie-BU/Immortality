@@ -787,7 +787,7 @@ async def syncFeedsToFRCore(
 
     # LLM 提炼摘要
     llm = prepareLLM(
-        "DOUBAO_2_0_LITE",
+        "LITE_MODEL",
         options={
             "temperature": 0,
             "reasoning_effort": "minimal",

@@ -128,7 +128,7 @@
 - trim 逻辑在 `_buildTrimmedShortTermMemory()` 中，见 [nodes.py](file:///Users/bytedance/Desktop/work/Immortality/src/agents/graphs/ConversationGraph/nodes.py#L82-L152)：
     - 若总字符数和消息条数都未超阈值，则不裁剪。
     - 若超阈值，则从最早的轮次开始裁掉。
-    - 被裁掉的消息与旧摘要一起交给 `DOUBAO_2_0_MINI` 做滚动总结。
+    - 被裁掉的消息与旧摘要一起交给 `MINI_MODEL` 做滚动总结。
     - 生成新的 `conversation_summary`。
     - 通过 `RemoveMessage` 把旧消息从 `MessagesState` 中真正删除。
 - `nodeCallLLM()` 会在主模型调用前，把 `conversation_summary` 作为一条额外的 `SystemMessage` 注入，见 [nodes.py](file:///Users/bytedance/Desktop/work/Immortality/src/agents/graphs/ConversationGraph/nodes.py#L475-L481)。

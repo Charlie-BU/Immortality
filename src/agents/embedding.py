@@ -13,7 +13,7 @@ async def vectorizeText(text: str) -> list[float]:
     向量化文本
     """
     resp = await _ark_client.multimodal_embeddings.create(
-        model=os.getenv("EMBEDDING_ENDPOINT_ID", ""),
+        model=os.getenv("EMBEDDING_MODEL", ""),
         input=[
             {"type": "text", "text": text},
         ],
@@ -28,7 +28,7 @@ async def vectorizeImage(image_url: str) -> list[float]:
     向量化图片
     """
     resp = await _ark_client.multimodal_embeddings.create(
-        model=os.getenv("EMBEDDING_ENDPOINT_ID", ""),
+        model=os.getenv("EMBEDDING_MODEL", ""),
         input=[
             {
                 "type": "image_url",
@@ -48,7 +48,7 @@ async def vectorizeMixed(text: List[str], image_url: List[str]) -> list[float]:
         {"type": "image_url", "image_url": {"url": u}} for u in image_url
     ]
     resp = await _ark_client.multimodal_embeddings.create(
-        model=os.getenv("EMBEDDING_ENDPOINT_ID", ""),
+        model=os.getenv("EMBEDDING_MODEL", ""),
         input=input_list,
         dimensions=1024,
     )
