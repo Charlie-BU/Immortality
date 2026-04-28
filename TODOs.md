@@ -2,10 +2,10 @@
 - ✅ System Message 飞书卡片渲染
 - ✅ CLI 支持（P0）
 - ✅ checkpoint 短期记忆 trim
-- 给用户可视化 FR 信息和 FRBuilding 具体结果（P0）
+- ✅ 给用户可视化 FR 信息和 FRBuilding 具体结果（P0）
 - multi-env, multi-service 支持（P0）
 - 日志治理（P0）
 - 降低用户配置心智成本，提供 shared 数据库，通过 http 接口访问（P0）
 - words_figure2user, words_user2figure 字段需要更严格的限制（P1）
 - Viking 接入（P2）
-- 模型输出 json 不稳定，需要兜底+重试，不能阻塞整个链路（P2）
+- ✅ 模型输出 json 不稳定，需要兜底+重试，不能阻塞整个链路（P2）
