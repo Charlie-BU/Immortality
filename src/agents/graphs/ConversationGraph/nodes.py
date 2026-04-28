@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 from datetime import datetime
@@ -17,7 +16,11 @@ from src.database.enums import FineGrainedFeedDimension
 from src.database.index import session
 from src.services.fine_grained_feed import recallFineGrainedFeeds
 from src.services.figure_and_relation import buildFigurePersonaMarkdown
-from src.utils.index import checkFigureAndRelationOwnership, stringifyValue
+from src.utils.index import (
+    ainvokeJsonWithRetry,
+    checkFigureAndRelationOwnership,
+    stringifyValue,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -531,21 +534,31 @@ async def nodeCallLLM(state: ConversationGraphState) -> ConversationGraphOutput:
 
     logger.info(f"\nmessages_to_send:\n{messages_to_send}\n\n")
 
-    resp = await arkAinvoke(
-        model="LITE_MODEL",
-        messages=messages_to_send,
-        model_options={
-            "temperature": 0.3,
-            "reasoning_effort": "low",
-        },
-        reasoning_content_in_ai_message=False,  # 不把 reasoning_content 放到 AIMessage 中，压缩 AIMessage 体积
-    )
-    output = resp["output"]
-    reasoning_content = resp["reasoning_content"]
+    output = ""
+    reasoning_content = ""
+
+    async def _invokeContent(retry_messages: List[BaseMessage]) -> str:
+        nonlocal output, reasoning_content
+        resp = await arkAinvoke(
+            model="LITE_MODEL",
+            messages=retry_messages,
+            model_options={
+                "temperature": 0.3,
+                "reasoning_effort": "low",
+            },
+            reasoning_content_in_ai_message=False,  # 不把 reasoning_content 放到 AIMessage 中，压缩 AIMessage 体积
+        )
+        output = stringifyValue(resp.get("output"), strip=False)
+        reasoning_content = stringifyValue(resp.get("reasoning_content"), strip=False)
+        return output
 
     try:
-        parsed_output = json.loads(output)
-    except json.JSONDecodeError:
+        parsed_output, output = await ainvokeJsonWithRetry(
+            messages=messages_to_send,
+            invoke_content=_invokeContent,
+            max_retries=2,
+        )
+    except ValueError:
         warning_message = "nodeCallLLM: failed to parse JSON output from LLM"
         logger.warning(f"{warning_message}: {output}")
         warnings += [warning_message]

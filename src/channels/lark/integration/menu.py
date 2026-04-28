@@ -333,8 +333,9 @@ def buildPersonaLark(open_id: str, fr_id: int, text: str) -> None:
                     # "raw_images": [],
                 },
             }
-            await graph.ainvoke(init_state)
+            res = await graph.ainvoke(init_state)
             end_time = time.perf_counter()
+            # print(res)
             logger.info(f"Successfully build persona for {figure_name}")
             sendCard2OpenId(
                 open_id=open_id,
@@ -342,6 +343,17 @@ def buildPersonaLark(open_id: str, fr_id: int, text: str) -> None:
                 content=f"已完成 **{figure_name}** 人物画像完善，耗时 `{end_time - start_time:.2f}s`",
                 theme="green",
             )
+            # 发送完善报告
+            fr_building_report = res.get("fr_building_report")
+            if isinstance(fr_building_report, str):
+                report_text = fr_building_report.strip()
+                if report_text:
+                    sendCard2OpenId(
+                        open_id=open_id,
+                        title=f"{figure_name} 画像完善报告",
+                        content=report_text,
+                        theme="violet",
+                    )
         except Exception as e:
             logger.warning(
                 f"Fail to build persona, open_id={open_id}, fr_id={fr_id}, err={e}",

@@ -238,6 +238,7 @@ async def updateFineGrainedFeed(
         db.add(
             FROverallUpdateLog(
                 fr_id=fr_id,
+                original_source_id=new_original_source_id,
                 update_field_or_sub_dimension=fine_grained_feed.sub_dimension or "",
                 update_dimension=fine_grained_feed.dimension,
                 old_value=serialize2String(old_content),

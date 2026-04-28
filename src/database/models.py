@@ -452,6 +452,17 @@ class FROverallUpdateLog(Base, SerializableMixin):
         backref="fr_overall_update_logs",
         lazy="select",
     )
+    original_source_id = Column(
+        Integer,
+        ForeignKey("original_source.id"),
+        nullable=True,
+        comment="关联原始输入材料ID",
+    )
+    original_source = relationship(
+        "OriginalSource",
+        backref="fr_overall_update_logs",
+        lazy="select",
+    )
 
     update_field_or_sub_dimension = Column(
         Text,

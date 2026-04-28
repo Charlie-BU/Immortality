@@ -3,7 +3,7 @@ import json
 import logging
 import os
 from typing import List, Literal
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from src.agents.graphs.FRBuildingGraph.state import (
     ExtractedFineGrainedFeed,
@@ -23,9 +23,11 @@ from src.database.enums import (
 )
 from src.database.index import session
 from src.services.figure_and_relation import (
+    addFRBuildingGraphReport,
     fr_allowed_fields,
     fr_list_fields,
     fr_string_fields,
+    getFROverallUpdateLogsThisRound,
     updateFigureAndRelation,
 )
 from src.services.fine_grained_feed import (
@@ -36,6 +38,7 @@ from src.services.fine_grained_feed import (
     updateFineGrainedFeed,
 )
 from src.utils.index import (
+    ainvokeJsonWithRetry,
     checkFigureAndRelationOwnership,
     cleanList,
     jsonDefault,
@@ -68,17 +71,27 @@ async def _compareFieldViaLLM(
         raise ValueError("FR compare field prompt is empty")
 
     user_prompt = f"field_name: {field_name}\n\nfield_type: {field_type}\n\nold_value: {old_value}\n\nnew_value: {new_value}"
-    response = await llm.ainvoke(
-        [
-            SystemMessage(content=FR_BUILDING_COMPARE_FIELD),
-            HumanMessage(content=user_prompt),
-        ]
-    )
+    messages = [
+        SystemMessage(content=FR_BUILDING_COMPARE_FIELD),
+        HumanMessage(content=user_prompt),
+    ]
+
+    async def _invokeContent(retry_messages: List[BaseMessage]) -> str:
+        retry_response = await llm.ainvoke(retry_messages)
+        return stringifyValue(retry_response.content, strip=False)
+
     try:
-        parsed_res = json.loads(response.content)
-    except json.JSONDecodeError:
+        parsed_res, _ = await ainvokeJsonWithRetry(
+            messages=messages,
+            invoke_content=_invokeContent,
+            max_retries=2,
+        )
+    except ValueError:
         logger.error("LLM response is not valid JSON")
         raise ValueError("LLM response is not valid JSON")
+    # logger.info(
+    #     f"Field Comparison Result: {json.dumps(parsed_res, ensure_ascii=False, indent=2, default=jsonDefault)}\n"
+    # )
 
     return {
         "tag": parsed_res.get("tag"),
@@ -173,11 +186,18 @@ async def nodePreprocessInput(state: FRBuildingGraphState) -> dict:
         SystemMessage(content=FR_BUILDING_PREPROCESS),
         HumanMessage(content=user_prompt),
     ]
-    response = await llm.ainvoke(messages)
+
+    async def _invokeContent(retry_messages: List[BaseMessage]) -> str:
+        retry_response = await llm.ainvoke(retry_messages)
+        return stringifyValue(retry_response.content, strip=False)
 
     try:
-        parsed_res = json.loads(response.content)
-    except json.JSONDecodeError:
+        parsed_res, _ = await ainvokeJsonWithRetry(
+            messages=messages,
+            invoke_content=_invokeContent,
+            max_retries=2,
+        )
+    except ValueError:
         logger.error("LLM response is not valid JSON")
         raise ValueError("LLM response is not valid JSON")
 
@@ -303,7 +323,16 @@ async def nodeExtractFRIntrinsicCandidates(state: FRBuildingGraphState) -> dict:
         logger.error("FR intrinsic extraction prompt is empty")
         raise ValueError("FR intrinsic extraction prompt is empty")
 
-    user_prompt = f"[figure_name]:\n{state['figure_and_relation'].get('figure_name', '')}\n\n[figure_role]:\n{state['figure_role'].value}\n\n[user_name]:\n{state['user_name']}\n\n[original_source_content]:\n{original_source_content}"
+    user_prompt = (
+        f"[figure_name]:\n{state['figure_and_relation'].get('figure_name', '')}\n\n"
+        f"[figure_role]:\n{state['figure_role'].value}\n\n"
+        + (
+            f"[user_name]:\n{state['user_name']}\n\n"
+            if state["figure_role"] != FigureRole.SELF
+            else ""
+        )  # 仅当 figure_role 不是 SELF 时，才添加 user_name
+        + f"[original_source_content]:\n{original_source_content}"
+    )
     llm = prepareLLM(
         "LITE_MODEL",
         options={
@@ -311,16 +340,22 @@ async def nodeExtractFRIntrinsicCandidates(state: FRBuildingGraphState) -> dict:
             "reasoning_effort": "low",
         },
     )
-    response = await llm.ainvoke(
-        [
-            SystemMessage(content=FR_BUILDING_EXTRACT_FR_INTRINSIC_CANDIDATES),
-            HumanMessage(content=user_prompt),
-        ]
-    )
+    messages = [
+        SystemMessage(content=FR_BUILDING_EXTRACT_FR_INTRINSIC_CANDIDATES),
+        HumanMessage(content=user_prompt),
+    ]
+
+    async def _invokeContent(retry_messages: List[BaseMessage]) -> str:
+        retry_response = await llm.ainvoke(retry_messages)
+        return stringifyValue(retry_response.content, strip=False)
 
     try:
-        parsed_res = json.loads(response.content)
-    except json.JSONDecodeError:
+        parsed_res, _ = await ainvokeJsonWithRetry(
+            messages=messages,
+            invoke_content=_invokeContent,
+            max_retries=2,
+        )
+    except ValueError:
         logger.error("LLM response is not valid JSON")
         raise ValueError("LLM response is not valid JSON")
 
@@ -528,11 +563,22 @@ async def nodePlanFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
                 )
                 # 对于 FR 内在字段判断，直接更新，无需考虑冲突落库
                 llm_final_value = LLM_compare_res.get("final_value")
-                final_value = (
-                    list(llm_final_value)
-                    if isinstance(llm_final_value, list)
-                    else existing_list
-                )
+                # 无关时没有 final_value，直接取两者合并
+                if (
+                    not llm_final_value
+                    or (
+                        isinstance(llm_final_value, str)
+                        and llm_final_value in ("[]", "")
+                    )
+                    or (isinstance(llm_final_value, list) and len(llm_final_value) == 0)
+                ):
+                    final_value = existing_list + new_list
+                else:
+                    final_value = (
+                        list(llm_final_value)
+                        if isinstance(llm_final_value, list)
+                        else existing_list + new_list
+                    )
                 plan_actions.append(
                     {
                         "field": field,
@@ -576,8 +622,9 @@ async def nodePlanFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
             )
             llm_final_value = LLM_compare_res.get("final_value")
             if not llm_final_value or llm_final_value == "":
-                # 模型判断为空，不更新直接跳过
-                continue
+                # 无关时，llm_final_value 为空，直接取两者合并
+                llm_final_value = f"{existing_text}；{new_text}"
+
             # 对于 FR 内在字段判断，直接更新，无需考虑冲突落库
             planned_updates[field] = stringifyValue(llm_final_value)
             plan_actions.append(
@@ -635,6 +682,7 @@ def nodePersistFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
         user_id=request["user_id"],
         fr_id=request["fr_id"],
         fr_body=fr_intrinsic_updates,
+        original_source_id=state.get("original_source_id"),
     )
     if res.get("status") != 200:
         logger.error(res.get("message", "Update FigureAndRelation failed"))
@@ -744,7 +792,18 @@ async def nodeExtractFineGrainedFeeds(state: FRBuildingGraphState) -> dict:
             "reasoning_effort": "low",
         },
     )
-    user_prompt = f"[figure_name]:\n{state['figure_and_relation'].get('figure_name', '')}\n\n[user_name] (the canonical name of the user/narrator in this task; in scenarios requiring role-title normalization, never output labels such as \"说话人\", \"我\", etc., and use the provided `user_name` value instead):\n{state['user_name']}\n\n[original_source_content]:\n{original_source_content}"
+    user_prompt = (
+        f"[figure_name]:\n{state['figure_and_relation'].get('figure_name', '')}\n\n"
+        + (
+            "[user_name] (the canonical name of the user/narrator in this task; "
+            "in scenarios requiring role-title normalization, never output labels "
+            'such as "说话人", "我", etc., and use the provided `user_name` '
+            f"value instead):\n{state['user_name']}\n\n"
+            if figure_role != FigureRole.SELF
+            else ""
+        )
+        + f"[original_source_content]:\n{original_source_content}"
+    )
 
     async def _extractByDimension(
         dimension: FineGrainedFeedDimension,
@@ -753,21 +812,25 @@ async def nodeExtractFineGrainedFeeds(state: FRBuildingGraphState) -> dict:
         """
         按维度提取细粒度信息
         """
+
+        async def _invokeContent(retry_messages: List[BaseMessage]) -> str:
+            retry_response = await llm.ainvoke(retry_messages)
+            return stringifyValue(retry_response.content, strip=False)
+
         try:
-            response = await llm.ainvoke(
-                [
+            raw_feeds, _ = await ainvokeJsonWithRetry(
+                messages=[
                     SystemMessage(content=role_prompt),
                     SystemMessage(content=dimension_prompt),
                     HumanMessage(content=user_prompt),
-                ]
+                ],
+                invoke_content=_invokeContent,
+                max_retries=2,
             )
+        except ValueError:
+            return dimension, [], "LLM response is not valid JSON"
         except Exception as e:
             return dimension, [], f"LLM invoke failed: {str(e)}"
-
-        try:
-            raw_feeds = json.loads(response.content)
-        except Exception:
-            return dimension, [], "LLM response is not valid JSON"
         if not isinstance(raw_feeds, list):
             return dimension, [], "LLM response is not valid JSON"
 
@@ -873,7 +936,7 @@ async def nodePlanFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
         }
 
     # 召回条数限制在 3-5，默认 3
-    top_k = int(os.getenv("FR_BUILDING_FEED_RECALL_TOP_K") or 3)
+    top_k = int(os.getenv("TOP_K_FEEDS_FOR_COMPARE") or 5)
 
     feed_upsert_plan = []
     for feed in extracted_feeds:
@@ -899,7 +962,10 @@ async def nodePlanFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
         recall_res = await recallFineGrainedFeeds(
             user_id=user_id,
             fr_id=fr_id,
-            scope=[{"scope": dimension, "top_k": top_k}],
+            # scope=[{"scope": dimension, "top_k": top_k}],
+            scope=[
+                {"scope": "all", "top_k": top_k}
+            ],  # 从所有维度召回细粒度信息，当前维度召回可能遗漏其他维度的需要变更的信息
             query=content,
         )
 
@@ -908,7 +974,14 @@ async def nodePlanFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
             recalled_items = []
             raw_items = recall_res.get("items", {})
             if isinstance(raw_items, dict):
-                recalled_items = raw_items.get(dimension.value, [])
+                recalled_items = [
+                    *raw_items.get(FineGrainedFeedDimension.PERSONALITY.value, []),
+                    *raw_items.get(
+                        FineGrainedFeedDimension.INTERACTION_STYLE.value, []
+                    ),
+                    *raw_items.get(FineGrainedFeedDimension.PROCEDURAL_INFO.value, []),
+                    *raw_items.get(FineGrainedFeedDimension.MEMORY.value, []),
+                ]
 
             for item in recalled_items:
                 if not isinstance(item, dict):
@@ -942,14 +1015,6 @@ async def nodePlanFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
             warnings = warnings + [warning]
 
         handled_flag = False
-        plan_item = {
-            "extracted_feed": feed,
-            "action": "add",
-            "target_feed_id": None,
-            "merged_content": None,
-            "reason": "No relevant recalled feed, add new feed",
-            "recalled_candidates": recalled_candidates,
-        }
 
         for recalled_feed in recalled_candidates:
             old_content = stringifyValue(recalled_feed.get("content"))
@@ -969,37 +1034,43 @@ async def nodePlanFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
                 continue
             if tag == "equivalent":
                 handled_flag = True
-                plan_item = {
-                    "extracted_feed": feed,
-                    "action": "skip",
-                    "target_feed_id": recalled_feed.get("id"),
-                    "merged_content": None,
-                    "reason": detail or "Equivalent to recalled feed",
-                    "recalled_candidates": recalled_candidates,
-                }
-                break
+                feed_upsert_plan.append(
+                    {
+                        "extracted_feed": feed,
+                        "action": "skip",
+                        "target_feed_id": recalled_feed.get("id"),
+                        "merged_content": None,
+                        "reason": detail or "Equivalent to recalled feed",
+                        "recalled_candidates": recalled_candidates,
+                    }
+                )
+                continue
             if tag in {"supplementary", "new_adopted"}:
                 handled_flag = True
-                plan_item = {
-                    "extracted_feed": feed,
-                    "action": "update",
-                    "target_feed_id": recalled_feed.get("id"),
-                    "merged_content": final_value or content,
-                    "reason": detail or f"{tag} by LLM compare",
-                    "recalled_candidates": recalled_candidates,
-                }
-                break
+                feed_upsert_plan.append(
+                    {
+                        "extracted_feed": feed,
+                        "action": "update",
+                        "target_feed_id": recalled_feed.get("id"),
+                        "merged_content": final_value or content,
+                        "reason": detail or f"{tag} by LLM compare",
+                        "recalled_candidates": recalled_candidates,
+                    }
+                )
+                continue
             if tag == "conflictive":
                 handled_flag = True
-                plan_item = {
-                    "extracted_feed": feed,
-                    "action": "conflict",
-                    "target_feed_id": recalled_feed.get("id"),
-                    "merged_content": final_value or content,
-                    "reason": detail or "Conflictive by LLM compare",
-                    "recalled_candidates": recalled_candidates,
-                }
-                break
+                feed_upsert_plan.append(
+                    {
+                        "extracted_feed": feed,
+                        "action": "conflict",
+                        "target_feed_id": recalled_feed.get("id"),
+                        "merged_content": final_value or content,
+                        "reason": detail or "Conflictive by LLM compare",
+                        "recalled_candidates": recalled_candidates,
+                    }
+                )
+                continue
 
             warning = (
                 f"Unexpected compare tag={tag}, "
@@ -1008,10 +1079,22 @@ async def nodePlanFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
             logger.warning(warning)
             warnings = warnings + [warning]
 
-        if not handled_flag and len(recalled_candidates) > 0:
-            plan_item["reason"] = "All recalled feeds are irrelevant"
-
-        feed_upsert_plan.append(plan_item)
+        if not handled_flag:
+            reason = (
+                "All recalled feeds are irrelevant"
+                if len(recalled_candidates) > 0
+                else "No relevant recalled feed, add new feed"
+            )
+            feed_upsert_plan.append(
+                {
+                    "extracted_feed": feed,
+                    "action": "add",
+                    "target_feed_id": None,
+                    "merged_content": None,
+                    "reason": reason,
+                    "recalled_candidates": recalled_candidates,
+                }
+            )
 
     action_counter = {"add": 0, "update": 0, "skip": 0, "conflict": 0}
     for item in feed_upsert_plan:
@@ -1128,8 +1211,10 @@ async def nodePersistFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
         }
 
         try:
+            # skip：不处理
             if action == "skip":
                 result_item["message"] = "Skip equivalent feed"
+            # add：新增 feed
             elif action == "add":
                 if content == "":
                     result_item["status"] = -1
@@ -1148,6 +1233,7 @@ async def nodePersistFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
                     result_item["message"] = add_res.get(
                         "message", "Add FineGrainedFeed failed"
                     )
+            # update：更新原有 feed content 为新值
             elif action == "update":
                 if not isinstance(target_feed_id, int):
                     result_item["status"] = -1
@@ -1168,6 +1254,7 @@ async def nodePersistFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
                     result_item["message"] = update_res.get(
                         "message", "Update FineGrainedFeed failed"
                     )
+            # conflict：记录冲突并更新原有 feed content 为新值（暂定策略）
             elif action == "conflict":
                 if not isinstance(target_feed_id, int):
                     result_item["status"] = -1
@@ -1324,96 +1411,118 @@ def nodeBuildFRBuildingGraphOutput(
     }
 
 
-# 暂时弃用：比较耗时
-# async def nodeGenerateFRBuildingReport(
-#     state: FRBuildingGraphState,
-# ) -> dict:
-#     """
-#     生成 FR 构建报告
-#     """
-#     logger.info("nodeGenerateFRBuildingReport is called")
-#     request = state.get("request") or {}
-#     user_id = request.get("user_id")
-#     fr_id = request.get("fr_id")
-#     if not isinstance(user_id, int):
-#         logger.error("Invalid request.user_id")
-#         raise ValueError("Invalid request.user_id")
-#     if not isinstance(fr_id, int):
-#         logger.error("Invalid request.fr_id")
-#         raise ValueError("Invalid request.fr_id")
+async def nodeGenerateFRBuildingReport(
+    state: FRBuildingGraphState,
+) -> dict:
+    """
+    生成 FR 构建报告
+    """
+    logger.info("nodeGenerateFRBuildingReport is called")
+    request = state.get("request") or {}
+    user_id = request.get("user_id")
+    fr_id = request.get("fr_id")
 
-#     warnings = state.get("warnings") or []
-#     logs = state.get("logs") or []
-#     output = {
-#         "status": state.get("status"),
-#         "message": state.get("message"),
-#         "original_source_id": state.get("original_source_id"),
-#         "fr_update_result": state.get("fr_update_result"),
-#         "feed_upsert_results": state.get("feed_upsert_results"),
-#         "logs": state.get("logs"),
-#         "warnings": state.get("warnings"),
-#         "errors": state.get("errors"),
-#     }
-#     llm = prepareLLM(
-#         "LITE_MODEL",
-#         options={
-#             "temperature": 0,
-#             "reasoning_effort": "low",
-#         },
-#     )
-#     report_markdown = ""
-#     try:
-#         FR_BUILDING_REPORT = await getPrompt(os.getenv("FR_BUILDING_REPORT"))
-#         if not FR_BUILDING_REPORT:
-#             logger.error("FR_BUILDING_REPORT prompt not found")
-#             raise ValueError("FR_BUILDING_REPORT prompt not found")
+    if not isinstance(user_id, int):
+        logger.error("Invalid request.user_id")
+        raise ValueError("Invalid request.user_id")
+    if not isinstance(fr_id, int):
+        logger.error("Invalid request.fr_id")
+        raise ValueError("Invalid request.fr_id")
 
-#         user_prompt = json.dumps(
-#             output, ensure_ascii=False, indent=2, default=jsonDefault
-#         )
-#         response = await llm.ainvoke(
-#             [
-#                 SystemMessage(content=FR_BUILDING_REPORT),
-#                 HumanMessage(content=user_prompt),
-#             ]
-#         )
-#         report_markdown = stringifyValue(response.content)
-#     except Exception as e:
-#         warning = f"Generate FR report via LLM failed: {str(e)}"
-#         logger.warning(warning)
-#         warnings = warnings + [warning]
-#         raise ValueError(warning)
+    original_source_id = state.get("original_source_id")
+    if not isinstance(original_source_id, int):
+        logger.error("Invalid request.original_source_id")
+        raise ValueError("Invalid request.original_source_id")
 
-#     persist_res = addFRBuildingGraphReport(
-#         user_id=user_id,
-#         fr_id=fr_id,
-#         report=report_markdown,
-#     )
-#     if persist_res.get("status") != 200:
-#         logger.error(
-#             f"Persist FRBuildingGraphReport failed: {persist_res.get('message', '')}"
-#         )
-#         raise ValueError(
-#             f"Persist FRBuildingGraphReport failed: {persist_res.get('message', '')}"
-#         )
+    warnings = state.get("warnings") or []
+    logs = state.get("logs") or []
 
-#     report_id = persist_res.get("fr_building_graph_report_id")
-#     logs += [
-#         {
-#             "step": "nodeGenerateFRBuildingReport",
-#             "status": "ok",
-#             "detail": "FR building report generated and persisted",
-#             "data": {
-#                 "fr_building_graph_report_id": report_id,
-#                 "report_length": len(report_markdown),
-#             },
-#         }
-#     ]
-#     logger.info(f"report_markdown: \n{report_markdown}\n")
+    fr_update_logs = getFROverallUpdateLogsThisRound(fr_id, original_source_id)
+    fr_intrinsic_updates = state.get("fr_intrinsic_updates") or {}
+    feed_upsert_plan = state.get("feed_upsert_plan") or []
+    if not fr_update_logs and not fr_intrinsic_updates and not feed_upsert_plan:
+        logger.info("No FR update logs this round")
+        logs += [
+            {
+                "step": "nodeGenerateFRBuildingReport",
+                "status": "ok",
+                "detail": "No FR update logs this round",
+                "data": {},
+            }
+        ]
+        logger.info("nodeGenerateFRBuildingReport executed finished\n")
+        return {
+            "fr_building_report": "本轮无有效更新",
+            "warnings": warnings,
+            "logs": logs,
+        }
 
-#     logger.info("nodeGenerateFRBuildingReport executed finished\n")
-#     return {
-#         "fr_building_report": report_markdown,
-#         "warnings": warnings,
-#         "logs": logs,
-#     }
+    llm = prepareLLM(
+        "LITE_MODEL",
+        options={
+            "temperature": 0,
+            "reasoning_effort": "low",
+        },
+    )
+    report_markdown = ""
+    try:
+        FR_BUILDING_REPORT = await getPrompt(os.getenv("FR_BUILDING_REPORT"))
+        if not FR_BUILDING_REPORT:
+            logger.error("FR_BUILDING_REPORT prompt not found")
+            raise ValueError("FR_BUILDING_REPORT prompt not found")
+
+        user_prompt = json.dumps(
+            {
+                "fr_update_logs": fr_update_logs,
+                "fr_intrinsic_updates": fr_intrinsic_updates,
+                "feed_upsert_plan": feed_upsert_plan,
+            },
+            ensure_ascii=False,
+            indent=2,
+            default=jsonDefault,
+        )
+        response = await llm.ainvoke(
+            [
+                SystemMessage(content=FR_BUILDING_REPORT),
+                HumanMessage(content=user_prompt),
+            ]
+        )
+        report_markdown = stringifyValue(response.content)
+    except Exception as e:
+        warning = f"Generate FR report via LLM failed: {str(e)}"
+        logger.warning(warning)
+        warnings = warnings + [warning]
+        raise ValueError(warning)
+
+    persist_res = addFRBuildingGraphReport(
+        user_id=user_id,
+        fr_id=fr_id,
+        report=report_markdown,
+    )
+    if persist_res.get("status") != 200:
+        logger.error(
+            f"Persist FRBuildingGraphReport failed: {persist_res.get('message', '')}"
+        )
+        raise ValueError(
+            f"Persist FRBuildingGraphReport failed: {persist_res.get('message', '')}"
+        )
+
+    report_id = persist_res.get("fr_building_graph_report_id")
+    logs += [
+        {
+            "step": "nodeGenerateFRBuildingReport",
+            "status": "ok",
+            "detail": "FR building report generated and persisted",
+            "data": {
+                "fr_building_graph_report_id": report_id,
+                "report_length": len(report_markdown),
+            },
+        }
+    ]
+
+    logger.info("nodeGenerateFRBuildingReport executed finished\n")
+    return {
+        "fr_building_report": report_markdown,
+        "warnings": warnings,
+        "logs": logs,
+    }

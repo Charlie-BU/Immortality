@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from typing import Any
+from typing import Any, List
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.agents.llm import prepareLLM
@@ -222,6 +222,7 @@ def updateFigureAndRelation(
     user_id: int,
     fr_id: int,
     fr_body: dict[str, Any],
+    original_source_id: int | None = None,
 ) -> dict:
     """
     通过 fr_id 更新 FigureAndRelation
@@ -234,6 +235,8 @@ def updateFigureAndRelation(
         return {"status": -3, "message": "fr_body must be a dict"}
     if not fr_body or fr_body == {}:
         return {"status": -4, "message": "fr_body is empty"}
+    if original_source_id is not None and not isinstance(original_source_id, int):
+        return {"status": -8, "message": "Invalid original_source_id"}
 
     try:
         updates = _frUpdateFieldCheck(fr_body)
@@ -261,6 +264,7 @@ def updateFigureAndRelation(
                 fr_logs.append(
                     FROverallUpdateLog(
                         fr_id=fr_id,
+                        original_source_id=original_source_id,
                         update_field_or_sub_dimension=field,
                         old_value=serialize2String(old_value),
                         new_value=serialize2String(value),
@@ -682,9 +686,7 @@ async def getFRAllContext(
             items = raw_items.get(conf["dimension"].value, [])
 
         recalled_map[conf["result_key"]] = (
-            buildRecalledMarkdown(title=conf["title"], items=items)
-            if items
-            else None
+            buildRecalledMarkdown(title=conf["title"], items=items) if items else None
         )
 
     return {
@@ -865,7 +867,7 @@ async def syncFeedsToFRCore(
             db.rollback()
             logger.error(f"syncFeedsToFRCore db update failed: {str(e)}")
             return {"status": -5, "message": "Sync FR core failed"}
-            
+
     return {
         "status": 200,
         "message": "Sync FR core success",
@@ -920,3 +922,30 @@ async def syncAllFeedsToFRCore(user_id: int) -> dict[str, Any]:
         "success_count": success_count,
         "fail_count": len(fr_ids) - success_count,
     }
+
+
+def getFROverallUpdateLogsThisRound(
+    fr_id: int, original_source_id: int
+) -> List[dict[str, Any]]:
+    """
+    获取 FR 该轮次所有变动日志
+    """
+    if not isinstance(fr_id, int):
+        return []
+    if not isinstance(original_source_id, int):
+        return []
+
+    with session() as db:
+        logs = (
+            db.query(FROverallUpdateLog)
+            .filter(
+                FROverallUpdateLog.fr_id == fr_id,
+                FROverallUpdateLog.original_source_id == original_source_id,
+            )
+            .order_by(FROverallUpdateLog.created_at.asc(), FROverallUpdateLog.id.asc())
+            .all()
+        )
+        return [
+            item.toJson(exclude=["fr_id", "original_source_id", "created_at"])
+            for item in logs
+        ]

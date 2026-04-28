@@ -74,6 +74,14 @@ You must output only a single JSON object with no extra text, in the following f
 "detail": string
 }
 
+## JSON Syntax Hard Constraints (MUST follow)
+
+- All JSON keys MUST use ASCII double quotes (`"`), never single quotes (`'`) or Chinese quotes (`“”`).
+- All string values MUST use ASCII double quotes (`"`).
+- Any double quote inside string content MUST be escaped as `\"`.
+- Any backslash inside string content MUST be escaped as `\\` when needed.
+- Output MUST be directly parseable by `json.loads` without any preprocessing.
+
 # Notes
 
 - Do not add any explanatory text outside the JSON structure

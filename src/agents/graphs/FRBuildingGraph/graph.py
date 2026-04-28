@@ -6,7 +6,7 @@ from src.agents.graphs.FRBuildingGraph.nodes import (
     nodeBuildFRBuildingGraphOutput,
     nodeExtractFineGrainedFeeds,
     nodeExtractFRIntrinsicCandidates,
-    # nodeGenerateFRBuildingReport,
+    nodeGenerateFRBuildingReport,
     nodeLoadFR,
     nodePersistFineGrainedFeedUpsert,
     nodePersistFRIntrinsicUpdate,
@@ -41,7 +41,7 @@ def buildFRBuildingGraph() -> CompiledStateGraph:
     graph.add_node("nodePlanFineGrainedFeedUpsert", nodePlanFineGrainedFeedUpsert)
     graph.add_node("nodePersistFineGrainedFeedUpsert", nodePersistFineGrainedFeedUpsert)
     graph.add_node("nodeBuildFRBuildingGraphOutput", nodeBuildFRBuildingGraphOutput)
-    # graph.add_node("nodeGenerateFRBuildingReport", nodeGenerateFRBuildingReport)
+    graph.add_node("nodeGenerateFRBuildingReport", nodeGenerateFRBuildingReport)
 
     graph.add_edge(START, "nodeLoadFR")
     graph.add_edge("nodeLoadFR", "nodePreprocessInput")
@@ -60,9 +60,8 @@ def buildFRBuildingGraph() -> CompiledStateGraph:
     graph.add_edge("nodePlanFineGrainedFeedUpsert", "nodePersistFineGrainedFeedUpsert")
     graph.add_edge("nodePersistFineGrainedFeedUpsert", "nodeBuildFRBuildingGraphOutput")
 
-    # graph.add_edge("nodeBuildFRBuildingGraphOutput", "nodeGenerateFRBuildingReport")
-    # graph.add_edge("nodeGenerateFRBuildingReport", END)
-    graph.add_edge("nodeBuildFRBuildingGraphOutput", END)
+    graph.add_edge("nodeBuildFRBuildingGraphOutput", "nodeGenerateFRBuildingReport")
+    graph.add_edge("nodeGenerateFRBuildingReport", END)
 
     return graph.compile()
 

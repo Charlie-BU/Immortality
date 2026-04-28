@@ -3,7 +3,8 @@ from enum import Enum
 import json
 import math
 import os
-from typing import Any
+from typing import Any, Awaitable, Callable
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from sqlalchemy.orm import Session
 
 from src.database.models import FigureAndRelation, OriginalSource
@@ -148,3 +149,45 @@ def jsonDefault(obj):
     if isinstance(obj, datetime):
         return obj.isoformat()
     return str(obj)
+
+
+async def ainvokeJsonWithRetry(
+    messages: list[BaseMessage],
+    invoke_content: Callable[[list[BaseMessage]], Awaitable[str]],
+    correction_hint: str | None = None,
+    max_retry: int = 1,
+) -> tuple[Any, str]:
+    """
+    调用 LLM 并解析 JSON；若解析失败，自动追加 AIMessage + HumanMessage 后重试。
+    返回最后一次 (parsed_json, raw_content)。
+    """
+    if max_retry < 0:
+        max_retry = 0
+
+    retry_messages = list(messages)
+    default_hint = (
+        "你上一条输出不是合法 JSON。"
+        "请严格按原任务要求重新输出，且仅输出可被 json.loads 解析的 JSON 对象。"
+        "不要包含 markdown、代码块标记或额外解释。"
+        "特别注意引号使用：JSON 的 key 必须使用英文双引号，"
+        "字符串值也必须使用英文双引号并在必要处正确转义；"
+        "禁止使用单引号、中文引号或未转义的双引号。"
+    )
+    hint = correction_hint or default_hint
+    last_raw_content = ""
+
+    for attempt in range(max_retry + 1):
+        last_raw_content = stringifyValue(
+            await invoke_content(retry_messages), strip=False
+        )
+        try:
+            return json.loads(last_raw_content), last_raw_content
+        except json.JSONDecodeError:
+            if attempt >= max_retry:
+                break
+            retry_messages = retry_messages + [
+                AIMessage(content=last_raw_content),
+                HumanMessage(content=hint),
+            ]
+
+    raise ValueError("LLM response is not valid JSON")

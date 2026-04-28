@@ -246,5 +246,5 @@ def testGetAllFineGrainedFeedConflict(
 if __name__ == "__main__":
     # print(testAddOriginalSource(fr_id=1))
     # print(asyncio.run(testAddFineGrainedFeed(fr_id=1, original_source_id=2)))
-    pprint.pprint(asyncio.run(testRecallFineGrainedFeeds(fr_id=2, top_k=10, query="Robyn开源项目：2025年04月至 2025 年 6、7 月份不再支持\nAPI管理平台CAM：2025年10月至 2026 年 1 月 25 日开发结束")), indent=2)
+    pprint.pprint(asyncio.run(testRecallFineGrainedFeeds(fr_id=2, top_k=3, query="API管理平台CAM的开发周期为2025年10月至2026年1月25日，开发工作在2026年1月25日结束")), indent=2)
 
