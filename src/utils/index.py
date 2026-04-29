@@ -151,6 +151,26 @@ def jsonDefault(obj):
     return str(obj)
 
 
+def toInt(value):
+    """
+    尝试将值转换为整数，若转换失败则返回 None。
+    """
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def toFloat(value, default):
+    """
+    尝试将值转换为浮点数，若转换失败则返回默认值。
+    """
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
 async def ainvokeJsonWithRetry(
     messages: list[BaseMessage],
     invoke_content: Callable[[list[BaseMessage]], Awaitable[str]],
