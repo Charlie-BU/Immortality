@@ -321,7 +321,7 @@ def getAllFigureAndRelations(
     user_id: int,
 ) -> dict:
     """
-    获取用户所有 FigureAndRelation（简短信息）
+    获取用户所有 FigureAndRelation（简要信息）
     """
     if not isinstance(user_id, int):
         return {"status": -1, "message": "Invalid user_id"}
@@ -343,13 +343,13 @@ def getAllFigureAndRelations(
                 fr.toJson(
                     include=[
                         "id",
-                        # "user_id",
+                        "user_id",
                         "figure_role",
                         "figure_name",
-                        # "figure_gender",
-                        # "is_deleted",
-                        # "created_at",
-                        # "updated_at",
+                        "figure_gender",
+                        "is_deleted",
+                        "created_at",
+                        "updated_at",
                     ]
                 )
                 for fr in figure_and_relations

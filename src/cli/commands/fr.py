@@ -254,6 +254,14 @@ def listAvailableFRsCLI(args: Namespace) -> int:
     user_id = getUserIdFromLocalSession()
     res = getAllFigureAndRelations(user_id=user_id)
     frs = res.get("figure_and_relations", [])
+    frs = [
+        {
+            "id": fr.get("id"),
+            "figure_role": fr.get("figure_role"),
+            "figure_name": fr.get("figure_name"),
+        }
+        for fr in frs
+    ]
 
     if args.json:
         printServiceResInCLI(res, as_json=True)
