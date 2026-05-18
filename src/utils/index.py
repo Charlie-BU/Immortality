@@ -13,6 +13,7 @@ from src.database.models import FigureAndRelation, OriginalSource
 
 # todo: 待治理：模块顶层引入太多依赖，不是纯 utils
 
+
 def timeDecay(created_at: datetime) -> float:
     """
     时间衰减函数
@@ -172,6 +173,26 @@ def jsonDefault(obj):
     if isinstance(obj, datetime):
         return obj.isoformat()
     return str(obj)
+
+
+def toSerializableValue(value: Any) -> Any:
+    """
+    递归转换为可安全透传给 HTTP / JSON 的基础类型
+    """
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {
+            stringifyValue(key, strip=False): toSerializableValue(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [toSerializableValue(item) for item in value]
+    if isinstance(value, tuple):
+        return [toSerializableValue(item) for item in value]
+    return value
 
 
 T = TypeVar("T")

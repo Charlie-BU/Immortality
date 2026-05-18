@@ -14,6 +14,7 @@ from src.services.figure_and_relation import (
     getFigureAndRelation,
     getFRAllContext,
     getFRBuildingGraphReport,
+    getFROverallUpdateLogsThisRound,
     ifFRBelongsToUser,
     syncAllFeedsToFRCore,
     syncFeedsToFRCore,
@@ -222,19 +223,18 @@ async def syncAllFeedsToFRCoreRouter(request: Request):
     return await syncAllFeedsToFRCore(user_id=user_id)
 
 
-# @figure_and_relation_router.get("/getFROverallUpdateLogsThisRound", auth_required=True)
-# async def getFROverallUpdateLogsThisRoundRouter(request: Request):
-#     fr_id = parseInt(request.query_params.get("fr_id", None))
-#     original_source_id = parseInt(request.query_params.get("original_source_id", None))
-#     if fr_id is None or original_source_id is None:
-#         return {"status": -1, "message": "fr_id or original_source_id is invalid"}
-#     return {
-#         "status": 200,
-#         "message": "Success",
-#         "logs": getFROverallUpdateLogsThisRound(
-#             fr_id=fr_id, original_source_id=original_source_id
-#         ),
-#     }
+@figure_and_relation_router.get("/getFROverallUpdateLogsThisRound", auth_required=True)
+async def getFROverallUpdateLogsThisRoundRouter(request: Request):
+    fr_id = parseInt(request.query_params.get("fr_id", None))
+    original_source_id = parseInt(request.query_params.get("original_source_id", None))
+    if fr_id is None or original_source_id is None:
+        return {"status": -1, "message": "fr_id or original_source_id is invalid"}
+    user_id = getUserIdByAccessToken(request=request)
+    return getFROverallUpdateLogsThisRound(
+        user_id=user_id,
+        fr_id=fr_id,
+        original_source_id=original_source_id,
+    )
 
 
 @figure_and_relation_router.get("/ifFRBelongsToUser", auth_required=True)

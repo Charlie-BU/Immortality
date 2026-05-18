@@ -1,3 +1,52 @@
+## CHANGELOG - 2026-05-18 14:27 - Graph 节点统一经由 dispatcher 分发 service 调用
+
+### 撰写时间
+
+- 2026-05-18 14:27
+
+### Base Commit
+
+- 82d59839d4bc241eb7eb274efc8715f3fa9cdbeb
+
+### Compare Scope
+
+- working_tree_only
+
+### 背景与改动目标
+
+- 这次改动的起点不是扩功能，而是把 shared database 这条链路继续往里收口。前几轮 dispatcher 已经接进了 CLI 和部分 channel，但两个 Graph 节点内部仍然残留着不少直接调用本地 service 的路径。这样一来，本地模式和共享数据库模式在 Graph 层会出现两套行为：前者直接触库，后者理论上应该走 HTTP 分发，但实际又没有完全接上。
+- 一开始最直接的做法是只补几个明显的读操作，例如 `getFigureAndRelation()` 或 `recallFineGrainedFeeds()`。但顺着 `FRBuildingGraph` 往下看，很快会发现它真正的问题不是“某一个漏网调用”，而是整条 Graph 执行链路里夹杂了多种调用方式。最终这轮选择把相关 service 调用尽量统一改成 `dispatchServiceCall()`，并把缺失的 router 契约和序列化能力一并补齐。
+
+### 改动概览
+
+- `src/agents/graphs/ConversationGraph/nodes.py`：`getUserById`、`getFigureAndRelation`、`recallFineGrainedFeeds` 全部改成通过 `dispatchServiceCall()` 获取数据。这样 `ConversationGraph` 在 shared mode 下不再偷偷回落到本地 service。
+- `src/agents/graphs/FRBuildingGraph/nodes.py`：把 `addOriginalSource`、`updateFigureAndRelation`、`recallFineGrainedFeeds`、`addFineGrainedFeed`、`updateFineGrainedFeed`、`addFineGrainedFeedConflict`、`getFROverallUpdateLogsThisRound`、`addFRBuildingGraphReport` 等调用统一收口到 dispatcher。`nodeGenerateFRBuildingReport()` 还补了一个降级分支：如果本轮更新日志拉取失败，会记 warning 和 logs，然后按 skip 继续，不阻塞整份报告生成。
+- `src/server/routers/figure_and_relation.py`、`src/services/figure_and_relation.py` 与 `src/service_dispatcher.py`：补出 `/fr/getFROverallUpdateLogsThisRound` 这条 HTTP API，并把原本只返回列表的 `getFROverallUpdateLogsThisRound()` 改成统一返回 `status/message/logs` 结构，同时增加 `user_id` ownership 校验。
+- `src/utils/index.py` 与 `src/service_dispatcher.py`：新增 `toSerializableValue()`，在 dispatcher 发起 HTTP 请求前统一把 `Enum`、`datetime`、嵌套 `dict/list/tuple` 转成可安全透传的基础类型，避免 Graph 节点把枚举和时间对象直接塞进 query 或 JSON 时出现序列化不一致。
+- `src/server/routers/graph.py` 被删除，`src/server/routers/index.py` 不再注册 `graph_router`；同时 `src/service_dispatcher.py` 里未被使用的 `GRAPH_API_MAP` 也一并清理。按当前约束，这两个 Graph API 已经不再作为外部依赖入口保留。
+
+### 关键链路解析（含上下游）
+
+- 上游依赖：这轮改动建立在 `dispatchServiceCall()` 已经能区分本地模式和 shared mode 的前提上。dispatcher 上游依赖 `SERVICE_API_MAP` 提供 service 到 HTTP 路径的映射，也依赖 CLI 本地 session 提供鉴权头。
+- 当前改动：`ConversationGraph` 和 `FRBuildingGraph` 现在都把“取用户、取 FR、召回 feed、写 original source、写冲突、写报告、拉本轮 update logs”这些 service 访问收口到同一种 dispatch 方式。换句话说，Graph 节点本身不再关心底层到底是本地直调还是远端 HTTP，它只消费统一的 service 返回结构。
+- 下游影响：shared mode 下，Graph 执行链路终于能完整复用 service router 契约，不会再因为某个节点偷偷直连本地数据库而绕开 dispatcher。与此同时，`getFROverallUpdateLogsThisRound` 从“本地 helper”升级成正式 API 之后，后续如果还有别的入口需要复用这份日志，也可以直接走同一条 HTTP 契约。
+
+### 改动结果与业务影响
+
+- 当前看，这轮改动解决的是 Graph 层调用语义不一致的问题。之前 dispatcher 已经存在，但 Graph 还是保留了不少直接 service 调用；现在这两层终于连上，shared database 模式的边界更清楚了。
+- `FRBuildingGraph` 的报告链路也更稳了一点。日志查询现在有显式的 API 和 ownership 校验，失败时会留下 warning 和执行日志，而不是直接让整个报告节点崩掉。这个选择偏保守，它优先保证“报告尽量产出”，代价是某些失败场景下报告可能缺少本轮 update logs。
+- 还有一个工程收益是序列化边界被固定下来了。Graph 里本来就会传 `FineGrainedFeedDimension`、`ConflictStatus`、`datetime` 这类对象；把它们在 dispatcher 入口统一归一化，比散落在各个 router 或调用点手写转换要稳定得多。
+
+### 风险与待办
+
+- 这轮已经解决的风险是“Graph 节点里还留着游离的直接 service 调用”。至少在当前 diff 覆盖到的 `ConversationGraph` 和 `FRBuildingGraph` 主链路上，这部分已经被 dispatcher 收口。
+- 仍然保留的边界是 `nodeGenerateFRBuildingReport()` 对 update logs 查询失败采用了 skip 策略。这个选择符合当前“不要阻塞报告”的目标，但也意味着当日志服务或远端调用异常时，最终报告可能不完整。当前更像是显式降级，不是彻底修复。
+- 未验证项主要有两类：一类是 shared mode 下 Graph 节点实际发起 HTTP 调用时，`toSerializableValue()` 是否已经覆盖了所有参数形态；另一类是 `getFROverallUpdateLogsThisRound` 新增 ownership 校验后，历史调用方是否都已经补齐 `user_id`。
+
+### 建议 Commit Message（git-cz）
+
+- `refactor(graph): route service calls through dispatcher`
+
 ## CHANGELOG - 2026-05-14 18:36 - 共享数据库模式补齐登录校验与环境诊断闭环
 
 ### 撰写时间

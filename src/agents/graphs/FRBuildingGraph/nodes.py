@@ -21,6 +21,7 @@ from src.database.enums import (
     OriginalSourceType,
     parseEnum,
 )
+from src.service_dispatcher import dispatchServiceCall
 from src.services.figure_and_relation import (
     addFRBuildingGraphReport,
     fr_allowed_fields,
@@ -111,12 +112,14 @@ def nodeLoadFR(state: FRBuildingGraphState) -> dict:
     user_id = request["user_id"]
     fr_id = request["fr_id"]
 
-    user = getUserById(user_id).get("user")
+    user = dispatchServiceCall(getUserById, {"id": user_id}).get("user")
     if user is None:
         logger.error("User not found")
         raise ValueError("User not found")
 
-    fr = getFigureAndRelation(user_id, fr_id).get("figure_and_relation")
+    fr = dispatchServiceCall(
+        getFigureAndRelation, {"user_id": user_id, "fr_id": fr_id}
+    ).get("figure_and_relation")
     if fr is None:
         logger.error("Figure and relation not found")
         raise ValueError("Figure and relation not found")
@@ -271,10 +274,13 @@ def nodePersistOriginalSource(state: FRBuildingGraphState) -> dict:
     """
     logger.info("nodePersistOriginalSource is called")
     original_source = state["original_source"]
-    res = addOriginalSource(
-        user_id=state["request"]["user_id"],
-        fr_id=state["request"]["fr_id"],
-        **original_source,
+    res = dispatchServiceCall(
+        addOriginalSource,
+        {
+            "user_id": state["request"]["user_id"],
+            "fr_id": state["request"]["fr_id"],
+            **original_source,
+        },
     )
     if res["status"] != 200:
         logger.error(res.get("message", "Add original source failed"))
@@ -686,11 +692,14 @@ def nodePersistFRIntrinsicUpdate(state: FRBuildingGraphState) -> dict:
             "logs": logs,
         }
 
-    res = updateFigureAndRelation(
-        user_id=request["user_id"],
-        fr_id=request["fr_id"],
-        fr_body=fr_intrinsic_updates,
-        original_source_id=state.get("original_source_id"),
+    res = dispatchServiceCall(
+        updateFigureAndRelation,
+        {
+            "user_id": request["user_id"],
+            "fr_id": request["fr_id"],
+            "fr_body": fr_intrinsic_updates,
+            "original_source_id": state.get("original_source_id"),
+        },
     )
     if res.get("status") != 200:
         logger.error(res.get("message", "Update FigureAndRelation failed"))
@@ -967,14 +976,17 @@ async def nodePlanFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
             warnings = warnings + [warning]
             continue
 
-        recall_res = await recallFineGrainedFeeds(
-            user_id=user_id,
-            fr_id=fr_id,
-            # scope=[{"scope": dimension, "top_k": top_k}],
-            scope=[
-                {"scope": "all", "top_k": top_k}
-            ],  # 从所有维度召回细粒度信息，当前维度召回可能遗漏其他维度的需要变更的信息
-            query=content,
+        recall_res = dispatchServiceCall(
+            recallFineGrainedFeeds,
+            {
+                "user_id": user_id,
+                "fr_id": fr_id,
+                # scope=[{"scope": dimension, "top_k": top_k}],
+                "scope": [
+                    {"scope": "all", "top_k": top_k}
+                ],  # 从所有维度召回细粒度信息，当前维度召回可能遗漏其他维度的需要变更的信息
+                "query": content,
+            },
         )
 
         recalled_candidates = []
@@ -1228,14 +1240,17 @@ async def nodePersistFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
                     result_item["status"] = -1
                     result_item["message"] = "Empty content for add action"
                 else:
-                    add_res = await addFineGrainedFeed(
-                        user_id=user_id,
-                        fr_id=fr_id,
-                        original_source_id=original_source_id,
-                        dimension=dimension,
-                        confidence=confidence,
-                        content=content,
-                        sub_dimension=sub_dimension,
+                    add_res = dispatchServiceCall(
+                        addFineGrainedFeed,
+                        {
+                            "user_id": user_id,
+                            "fr_id": fr_id,
+                            "original_source_id": original_source_id,
+                            "dimension": dimension,
+                            "confidence": confidence,
+                            "content": content,
+                            "sub_dimension": sub_dimension,
+                        },
                     )
                     result_item["status"] = add_res.get("status", -1)
                     result_item["message"] = add_res.get(
@@ -1250,13 +1265,16 @@ async def nodePersistFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
                     result_item["status"] = -2
                     result_item["message"] = "merged_content is required for update"
                 else:
-                    update_res = await updateFineGrainedFeed(
-                        user_id=user_id,
-                        fr_id=fr_id,
-                        fine_grained_feed_id=target_feed_id,
-                        new_original_source_id=original_source_id,
-                        new_content=merged_content,
-                        new_sub_dimension=sub_dimension,
+                    update_res = dispatchServiceCall(
+                        updateFineGrainedFeed,
+                        {
+                            "user_id": user_id,
+                            "fr_id": fr_id,
+                            "fine_grained_feed_id": target_feed_id,
+                            "new_original_source_id": original_source_id,
+                            "new_content": merged_content,
+                            "new_sub_dimension": sub_dimension,
+                        },
                     )
                     result_item["status"] = update_res.get("status", -1)
                     result_item["message"] = update_res.get(
@@ -1285,24 +1303,30 @@ async def nodePersistFineGrainedFeedUpsert(state: FRBuildingGraphState) -> dict:
                         old_value = merged_content
 
                     # 降级方案：先记录冲突，再直接采用新内容进行更新
-                    conflict_res = addFineGrainedFeedConflict(
-                        user_id=user_id,
-                        fr_id=fr_id,
-                        dimension=dimension,
-                        feed_ids=[target_feed_id],
-                        old_value=old_value,
-                        new_value=content or merged_content,
-                        conflict_detail=reason or "Conflictive by LLM compare",
-                        status=ConflictStatus.PENDING,
+                    conflict_res = dispatchServiceCall(
+                        addFineGrainedFeedConflict,
+                        {
+                            "user_id": user_id,
+                            "fr_id": fr_id,
+                            "dimension": dimension,
+                            "feed_ids": [target_feed_id],
+                            "old_value": old_value,
+                            "new_value": content or merged_content,
+                            "conflict_detail": reason or "Conflictive by LLM compare",
+                            "status": ConflictStatus.PENDING,
+                        },
                     )
 
-                    update_res = await updateFineGrainedFeed(
-                        user_id=user_id,
-                        fr_id=fr_id,
-                        fine_grained_feed_id=target_feed_id,
-                        new_original_source_id=original_source_id,
-                        new_content=merged_content,
-                        new_sub_dimension=sub_dimension,
+                    update_res = dispatchServiceCall(
+                        updateFineGrainedFeed,
+                        {
+                            "user_id": user_id,
+                            "fr_id": fr_id,
+                            "fine_grained_feed_id": target_feed_id,
+                            "new_original_source_id": original_source_id,
+                            "new_content": merged_content,
+                            "new_sub_dimension": sub_dimension,
+                        },
                     )
                     result_item["status"] = (
                         200
@@ -1445,7 +1469,34 @@ async def nodeGenerateFRBuildingReport(
     warnings = state.get("warnings") or []
     logs = state.get("logs") or []
 
-    fr_update_logs = getFROverallUpdateLogsThisRound(fr_id, original_source_id)
+    fr_update_logs_res = dispatchServiceCall(
+        getFROverallUpdateLogsThisRound,
+        {
+            "user_id": user_id,
+            "fr_id": fr_id,
+            "original_source_id": original_source_id,
+        },
+    )
+    fr_update_logs = []
+    if fr_update_logs_res.get("status") != 200:
+        warning = fr_update_logs_res.get(
+            "message", "Get FR overall update logs this round failed"
+        )
+        logger.warning(warning)
+        warnings = warnings + [warning]
+        logs += [
+            {
+                "step": "nodeGenerateFRBuildingReport",
+                "status": "skip",
+                "detail": "Skip FR overall update logs because service call failed",
+                "data": {
+                    "service_status": fr_update_logs_res.get("status"),
+                    "service_message": warning,
+                },
+            }
+        ]
+    else:
+        fr_update_logs = fr_update_logs_res.get("logs", [])
     fr_intrinsic_updates = state.get("fr_intrinsic_updates") or {}
     feed_upsert_plan = state.get("feed_upsert_plan") or []
     if not fr_update_logs and not fr_intrinsic_updates and not feed_upsert_plan:
@@ -1502,10 +1553,13 @@ async def nodeGenerateFRBuildingReport(
         warnings = warnings + [warning]
         raise ValueError(warning)
 
-    persist_res = addFRBuildingGraphReport(
-        user_id=user_id,
-        fr_id=fr_id,
-        report=report_markdown,
+    persist_res = dispatchServiceCall(
+        addFRBuildingGraphReport,
+        {
+            "user_id": user_id,
+            "fr_id": fr_id,
+            "report": report_markdown,
+        },
     )
     if persist_res.get("status") != 200:
         logger.error(

@@ -3,7 +3,7 @@ import inspect
 import logging
 from typing import Any, Awaitable, Callable
 
-from src.utils.index import runAwaitableSync
+from src.utils.index import runAwaitableSync, toSerializableValue
 from src.utils.request import afetch
 
 logger = logging.getLogger(__name__)
@@ -90,6 +90,11 @@ SERVICE_API_MAP = {
     "getAllFRBuildingGraphReport": {
         "method": "GET",
         "path": "/fr/getAllFRBuildingGraphReport",
+        "auth_required": True,
+    },
+    "getFROverallUpdateLogsThisRound": {
+        "method": "GET",
+        "path": "/fr/getFROverallUpdateLogsThisRound",
         "auth_required": True,
     },
     "getFRAllContext": {
@@ -216,20 +221,6 @@ SERVICE_API_MAP = {
     },
 }
 
-# todo: 待验证
-GRAPH_API_MAP = {
-    "runConversationGraph": {
-        "method": "POST",
-        "path": "/graph/conversation",
-        "auth_required": True,
-    },
-    "runFRBuildingGraph": {
-        "method": "POST",
-        "path": "/graph/frBuilding",
-        "auth_required": True,
-    },
-}
-
 
 def isSharedDatabaseMode() -> bool:
     """
@@ -279,11 +270,14 @@ def _requestHTTPByConfig(
     url = f"{base_url}{api_config['path']}"
     method = api_config["method"]
     headers = _buildAuthHeaders(api_config["auth_required"])
+    normalized_args = toSerializableValue(args)
 
     def _send() -> Awaitable[dict[str, Any]]:
         if method == "GET":
-            return afetch(url, method=method, query_params=args, headers=headers)
-        return afetch(url, method=method, json_data=args, headers=headers)
+            return afetch(
+                url, method=method, query_params=normalized_args, headers=headers
+            )
+        return afetch(url, method=method, json_data=normalized_args, headers=headers)
 
     # 同步运行异步方法
     response = runAwaitableSync(_send)

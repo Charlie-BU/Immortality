@@ -19,6 +19,7 @@ from src.utils.index import (
     cleanList,
     stringifyValue,
     serialize2String,
+    toSerializableValue,
 )
 
 
@@ -926,17 +927,24 @@ async def syncAllFeedsToFRCore(user_id: int) -> dict[str, Any]:
 
 
 def getFROverallUpdateLogsThisRound(
-    fr_id: int, original_source_id: int
-) -> List[dict[str, Any]]:
+    user_id: int,
+    fr_id: int,
+    original_source_id: int,
+) -> dict[str, Any]:
     """
     获取 FR 该轮次所有变动日志
     """
+    if not isinstance(user_id, int):
+        return {"status": -1, "message": "User ID must be an integer"}
     if not isinstance(fr_id, int):
-        return []
+        return {"status": -2, "message": "FR ID must be an integer"}
     if not isinstance(original_source_id, int):
-        return []
+        return {"status": -3, "message": "Original source ID must be an integer"}
 
     with session() as db:
+        fr = checkFigureAndRelationOwnership(db=db, user_id=user_id, fr_id=fr_id)
+        if fr is None:
+            return {"status": -3, "message": "FigureAndRelation not found"}
         logs = (
             db.query(FROverallUpdateLog)
             .filter(
@@ -946,10 +954,16 @@ def getFROverallUpdateLogsThisRound(
             .order_by(FROverallUpdateLog.created_at.asc(), FROverallUpdateLog.id.asc())
             .all()
         )
-        return [
-            item.toJson(exclude=["fr_id", "original_source_id", "created_at"])
-            for item in logs
-        ]
+        return {
+            "status": 200,
+            "message": "Success",
+            "logs": [
+                toSerializableValue(
+                    item.toJson(exclude=["fr_id", "original_source_id", "created_at"])
+                )
+                for item in logs
+            ],
+        }
 
 
 def ifFRBelongsToUser(
