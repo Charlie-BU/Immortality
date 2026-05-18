@@ -1,3 +1,53 @@
+## CHANGELOG - 2026-05-18 15:43 - 收紧文档写作约束并修正 CLI 的 Robyn 导入副作用
+
+### 撰写时间
+
+- 2026-05-18 15:43
+
+### Base Commit
+
+- f502a338922d152a9cbba074b110815d33e42459
+
+### Compare Scope
+
+- working_tree_only
+
+### 背景与改动目标
+
+- 这次工作区改动有两条线，但它们都在处理“入口不要带副作用”这件事。一条是文档侧：`doc-generator` 和 `doc-optimizer` 之前更强调结构化，当前补上的约束开始明确要求少空话、少模板腔、少机械收束，让产出的文档更接近真实工程复盘。另一条是 CLI 侧：`immortality auth -h` 会在真正进入命令树之前被 `robyn` 抢走参数解析，根因是 `src/services/user.py` 顶层导入了只用于类型标注的 `Request`。
+- 一开始最直接的修法只是把报错压下去，但顺着链路看，问题本质不是某个 help 命令异常，而是“被 CLI 预加载的模块不该顺手把 Web 框架带进来”。因此这轮改动除了修类型导入，还顺手把这次经验写成 `docs/DEV_CASES.md`，并清掉一份已经不再保留的总览文档。
+
+### 改动概览
+
+- `.trae/skills/doc-generator/SKILL.md`：新增“表达约束”与禁止事项，明确要求少套固定模板、少同义反复、少 AI 腔，同时把部分 YAML 引号和列表缩进统一为更稳定的写法。
+- `.trae/skills/doc-optimizer/SKILL.md`：补充“能收短就收短”“只删冗余、不重复原意”等约束，继续强调不要把原文压成更整齐但更空的总结稿。
+- `src/services/user.py` 与 `src/server/auth.py`：都切到 `from __future__ import annotations` + `TYPE_CHECKING`，把 `Request` 从运行时导入改成仅类型检查时导入，避免 CLI 预加载 `robyn`。
+- `docs/DEV_CASES.md`：新增一条开发案例，直接记录这次 `robyn` 导入副作用的触发路径、修法和最小经验。
+- `docs/BRIEF_INTRO.md`：整份删除，当前工作区没有看到对应的替代链接收口动作。
+
+### 关键链路解析（含上下游）
+
+- 上游依赖：`src/cli/commands/auth.py` 在注册子命令阶段就会导入 `src.services.user`，而 `src.services.user` 又会被 `src.service_dispatcher`、`src.cli.utils`、server 鉴权等多条链路复用。这意味着它一旦在模块顶层带入 `robyn`，CLI 和 Server 两侧都会被影响。
+- 当前改动：`Request` 现在只存在于注解语义里，不再参与运行时导入。实测 `uv run immortality auth -h` 已经回到项目自己的帮助输出，说明“CLI 帮助被 Robyn 抢参”这条链路被修正了。文档 skill 侧则通过增加显式表达约束，把“结构化”从模板化写作里剥离出来。
+- 下游影响：所有会被 CLI 预加载的用户相关命令都会共享这次导入修复收益；`docs/DEV_CASES.md` 也把这个坑沉淀成了后续可复用的排查经验。另一方面，`docs/BRIEF_INTRO.md` 被删之后，仓库里至少还有 `.trae/deepwiki/项目概览.md` 保留着指向它的链接，如果不继续收口，文档导航会留下死链。
+
+### 改动结果与业务影响
+
+- 当前看，CLI 侧的实际收益是明确的：帮助命令恢复正常，`src/services/user.py` 这类会被 CLI 和 Server 共用的模块也更接近“无副作用模块”的目标。
+- 文档侧的收益更偏长期治理。`doc-generator` 和 `doc-optimizer` 现在把“不要为了完整而写空话”写成了显式规则，后续产出的 `docs/` 文档在语气和密度上会更可控。
+- 这轮改动也带来了一个边界：`docs/BRIEF_INTRO.md` 被删掉后，仓库里原来依赖它做导航的说明文档还没有同步更新。换句话说，文档资产在收口，但索引还没完全跟上。
+
+### 风险与待办
+
+- 已验证项：`uv run immortality auth -h` 现在输出的是项目 CLI 自己的帮助，不再出现 `robyn` 抢先解析参数的现象。
+- 已知风险：`.trae/deepwiki/项目概览.md` 仍然引用 `docs/BRIEF_INTRO.md`。如果这次删除是有意为之，至少需要把链接改到新的承载文档；如果不是有意删除，这份总览文档需要恢复或迁移。
+- 未验证项：当前只修了 `src/services/user.py` 和 `src/server/auth.py` 这两处类型导入，没有系统验证其他“会被 CLI 预加载但又可能引用 Web 框架类型”的模块是否也存在同类副作用。
+- 后续动作：先补文档索引收口，再做一次面向 CLI 入口的全局排查，重点看顶层导入是否还会带入 `robyn`、网络客户端或参数解析副作用。
+
+### 建议 Commit Message（git-cz）
+
+- `fix(cli): avoid robyn import side effects in auth flow`
+
 ## CHANGELOG - 2026-05-18 14:27 - Graph 节点统一经由 dispatcher 分发 service 调用
 
 ### 撰写时间

@@ -1,8 +1,8 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from urllib.parse import unquote
-from robyn import Request
 from sqlalchemy import or_
 from jose import jwt
-from jose.exceptions import JWTError
 import os
 import logging
 from datetime import datetime, timedelta, timezone
@@ -10,6 +10,9 @@ from datetime import datetime, timedelta, timezone
 from src.database.index import session
 from src.database.models import User
 from src.database.enums import Gender, parseEnum
+
+if TYPE_CHECKING:
+    from robyn import Request
 
 
 logger = logging.getLogger(__name__)

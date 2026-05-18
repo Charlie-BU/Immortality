@@ -1,10 +1,13 @@
+from __future__ import annotations
 import os
-from robyn import Request
+from typing import TYPE_CHECKING
 from robyn.robyn import Identity
 from robyn.authentication import AuthenticationHandler
 
 from src.services.user import decodeAccessToken, getUserById
 
+if TYPE_CHECKING:
+    from robyn import Request
 
 # 接口权限映射，value为访问该接口最低的用户等级
 API_PERMISSION_MAP = {}
