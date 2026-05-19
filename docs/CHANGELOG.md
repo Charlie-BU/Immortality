@@ -1,3 +1,49 @@
+## CHANGELOG - 2026-05-19 14:49 - shared mode 补齐 GET 参数过滤与 Lark 启动边界
+
+### 撰写时间
+
+- 2026-05-19 14:49
+
+### Base Commit
+
+- f680877971c09d52f0bc9ee66f9d0c15b7825398
+
+### Compare Scope
+
+- working_tree_only
+
+### 背景与改动目标
+
+- 这次工作区改动的起点是两个 shared mode 相关的运行时问题。第一个问题出现在 `immortality fr show --id 1`：命令没有显式传 `--query`，但 CLI 还是把 `query=None` 透传给了远端 `GET` 请求，最终在 `aiohttp` 的 `params` 编码阶段报出 `Invalid variable type`。第二个问题出现在 `immortality lark-service start`：`doctor` 已经能在 shared mode 下只检查远端 `/ping`，但真正启动时仍然无条件执行本地 `initDatabaseIfNeeded()`，于是 easy 模式写入的占位数据库地址 `shared-mode.invalid` 反过来把启动流程打断了。
+- 一开始我先在命令侧做了局部兜底，但顺着调用链继续看，会发现这两个问题都不是单点 bug。前者本质上是 dispatcher 没有替 `GET` 请求兜住 `None` 参数，后者本质上是 Lark 启动链路没有尊重 `USE_SHARED_DATABASE` 的模式边界。因此这轮没有继续堆入口特判，而是把修复收口到更通用的分发层和启动层。
+
+### 改动概览
+
+- `src/service_dispatcher.py`：在 `_requestHTTPByConfig()` 的 `GET` 分支里新增 `query_args` 过滤，只移除值为 `None` 的 query 参数，再交给 `afetch()` 发起请求。`POST` 的 `json_data` 透传逻辑保持不变，避免误伤显式 `null` 语义。
+- `src/channels/lark/websocket.py`：`startLarkService()` 现在会先读取 `isSharedDatabaseMode()`，只有在本地数据库模式下才执行 `initDatabaseIfNeeded()`；shared mode 直接进入 `startLarkWebSocketServer()`。
+
+### 关键链路解析（含上下游）
+
+- 上游依赖：`src/cli/commands/fr.py`、Lark integration 菜单命令和其他 CLI / channel 入口都会通过 `dispatchServiceCall()` 进入 `_requestHTTPByConfig()`。这意味着只要是远端 `GET` 请求，就共享同一套 query 参数编码路径。另一条上游是 `setup` 与 `doctor`：`src/cli/commands/index.py` 在 easy 模式下会把数据库 host 写成 `shared-mode.invalid`，同时让 `doctor` 在 shared mode 下改查 `HTTP_BASE_URL/ping`。
+- 当前改动：dispatcher 现在在真正构造 `query_params` 前过滤 `None`，把“调用方允许缺省参数”和“HTTP query 不能出现 `None`”这两个语义边界隔开。Lark 启动侧则把 shared mode 当成一等公民处理，不再在启动 WebSocket 服务之前顺手做本地数据库初始化。
+- 下游影响：`fr show`、Lark 菜单里的 `showFRLark()` 等所有通过 dispatcher 发起 `GET` 请求、且可能带可选参数的调用都能直接复用这次修复，不需要每个调用点再各自判断 `None`。`lark-service start` 在 shared mode 下也终于和 `doctor` 的检查语义对齐，不会再因为 easy 模式占位连接串而在启动阶段提前失败。
+
+### 改动结果与业务影响
+
+- 当前看，这轮主要解决的是 shared mode 下“入口看似已经切到远端，但运行时仍残留本地语义”的问题。`GET` 请求参数现在更接近 HTTP 客户端的真实约束，Lark 服务启动也更符合 easy 模式“依赖远端服务而不是本地数据库”的预期。
+- 这两处改动的收益都比较直接。前者让可选 query 参数回到“省略即可”的语义，后者让 Lark Bot 在 shared mode 下至少不会被本地数据库占位地址拦住。代价也比较可控：`GET` 只过滤 `None`，不会动到空字符串、`0`、`False` 这类仍可能有业务意义的值；Lark 启动也只是跳过本地 schema 初始化，没有改动消息处理主链路。
+
+### 风险与待办
+
+- 已验证项：`uv run immortality fr show --id 1` 已经可以正常返回画像内容，不再出现 `Invalid variable type`。`uv run immortality lark-service start` 也已经越过了 `shared-mode.invalid` 的数据库报错，说明启动链路里的本地初始化问题被绕开了。
+- 当前暴露出的新边界是日志权限：Lark 服务继续启动时，失败点转移到了 `src/main.py` 里的 `logging.FileHandler`，报错为 `Operation not permitted: '/Users/bytedance/.immortality/logs/app-20260519.log'`。这说明数据库问题已经不再是首个阻塞点，但日志写入仍有环境兼容性风险。
+- 未验证项：这轮没有补自动化回归，尤其是“shared mode 下远端 `GET` 统一过滤 `None`”和“Lark 服务在不同模式下启动分支”这两类行为，目前主要依赖手工验证。
+- 后续动作：先决定是否给 `preconfig()` 加日志文件不可写时的 fallback，再补一组最小回归验证，覆盖 shared mode 下 `dispatchServiceCall()` 的 `GET` 参数过滤和 `startLarkService()` 的模式分支。
+
+### 建议 Commit Message（git-cz）
+
+- `fix(shared-mode): align get dispatch and lark startup`
+
 ## CHANGELOG - 2026-05-18 15:43 - 收紧文档写作约束并修正 CLI 的 Robyn 导入副作用
 
 ### 撰写时间

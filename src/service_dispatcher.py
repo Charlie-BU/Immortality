@@ -274,9 +274,12 @@ def _requestHTTPByConfig(
 
     def _send() -> Awaitable[dict[str, Any]]:
         if method == "GET":
-            return afetch(
-                url, method=method, query_params=normalized_args, headers=headers
-            )
+            query_args = {
+                key: value
+                for key, value in normalized_args.items()
+                if value is not None  # GET 请求参数不能为 None
+            }
+            return afetch(url, method=method, query_params=query_args, headers=headers)
         return afetch(url, method=method, json_data=normalized_args, headers=headers)
 
     # 同步运行异步方法
