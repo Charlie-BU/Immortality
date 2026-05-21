@@ -1,3 +1,49 @@
+## CHANGELOG - 2026-05-21 15:18 - easy mode 入口隐藏并收口 shared mode 对外结论
+
+### 撰写时间
+
+- 2026-05-21 15:18
+
+### Base Commit
+
+- ac02f3470b8ba2c4f3a962ae96612d9e6f992b54
+
+### Compare Scope
+
+- working_tree_only
+
+### 背景与改动目标
+
+- 这次工作区改动没有继续扩 shared database 能力本身，而是在收口“现在到底该不该把它当成正式用户能力暴露出去”这个边界。前几轮已经把 `USE_SHARED_DATABASE`、`dispatchServiceCall()`、shared mode 下的 `doctor`、Graph/service 分流、Lark 启动分支都补到了可运行状态，文档里关于 bottleneck 的叙述却还停留在“方案被卡死”与“长期尝试中间态”。
+- 一开始 `setupCLI()` 仍然保留了 `Easy setup (Use cloud database with encrypted data)` 这个选项，代码里也还会在选中后写入 `USE_SHARED_DATABASE=True` 和占位数据库连接串。但如果顺着 `docs/BOTTLENECK.md` 里的最新结论继续看，会发现当前真正的判断已经变成了另一件事：数据库接入问题基本被拆掉了，可对外开放的阻塞点转移到了模型配置归属、服务端代执行边界和产品化承诺。因此这轮没有再补新能力，而是先把 CLI 入口和文档结论对齐。
+
+### 改动概览
+
+- `src/cli/commands/index.py`：把 `setupCLI()` 里 `questionary.select()` 的 `easy` 选项注释掉，并在旁边补了一句“暂不启用，详见 `docs/BOTTLENECK.md`”。`use_shared_database = database_config_mode == "easy"`、占位连接串写入、`USE_SHARED_DATABASE` 回填和“shared mode 下跳过 `initDatabaseIfNeeded()`”这些底层分支没有被删，说明能力骨架仍然保留，只是先从公开交互入口撤下。
+- `docs/BOTTLENECK.md`：新增“单一飞书 Bot 问题”作为独立议题，同时把 shared database 这一节从“仍被 checkpointer 卡死”改写成更接近当前实现状态的复盘。文档现在明确记录了六部分已落地能力，包括 router/dispatcher、Graph 在 shared mode 下退化为 `InMemorySaver`、`lark-service start` 跳过本地数据库初始化，以及当前为什么仍然不开放给用户。
+
+### 关键链路解析（含上下游）
+
+- 上游依赖：这轮判断建立在前几轮 shared mode 相关实现已经存在的前提上。`runDoctorCheck()` 已经会根据 `USE_SHARED_DATABASE` 分流到 `HTTP_BASE_URL/ping`；`setupCLI()` 仍保留 easy mode 对应的 `.env` 写入逻辑；`ConversationGraph`、dispatcher、Lark 启动链路也都已经按模式切分。本次改动没有新建这些能力，而是重新定义它们在产品入口层的暴露方式。
+- 当前改动：CLI 层把 easy mode 从 `questionary` 选择列表里撤掉，意味着普通用户通过标准 `immortality setup` 流程不再能直接进入 shared database 模式。文档层则把“卡点是什么”说得更准确了：checkpointer 问题已经通过 shared mode 下退化到 `InMemorySaver` 被绕开，真正剩下的是服务端模型依赖 `EMBEDDING_MODEL`、`syncFeedsToFRCore` / `syncAllFeedsToFRCore` 需要消费用户侧模型配置这类边界问题。
+- 下游影响：对 CLI 用户来说，`setup` 的公开可选项重新收敛到 `docker` 和 `manual` 两条路径，避免把一个内部已跑通但尚未产品化收尾的模式过早暴露出去。对维护者来说，`docs/BOTTLENECK.md` 终于和代码现状对齐，后续讨论 shared mode 时不会再同时混用“数据库仍是最终瓶颈”和“数据库问题已基本解决”这两套相互打架的表述。
+
+### 改动结果与业务影响
+
+- 当前看，这轮的收益主要是“能力状态表述”更一致了。shared mode 并没有被回滚，底层开关、分发层和大部分运行链路都还在；变化在于入口被主动降级成内部能力，避免用户在 `setup` 阶段看到 easy mode 后误以为这是已经准备好对外承诺的正式方案。
+- 这份文档收口也把项目当前判断说清楚了：数据库问题本身已经不是最主要阻塞点，真正没有收口的是模型配置与服务端代执行的归属。这样后续如果继续推进 shared mode，重点就不会再错误地放回数据库接入，而会转向模型能力的配置透传和职责边界设计。
+
+### 风险与待办
+
+- 已知边界：`setupCLI()` 只是隐藏了 `easy` 选项，并没有移除底层逻辑。也就是说，shared mode 仍然是存在于代码中的一套能力，只是暂时不走公开交互入口；后续如果文档和实现再次偏移，维护者仍然可能对“是否支持”产生误读。
+- 已知边界：`docs/BOTTLENECK.md` 现在明确把阻塞点收敛到了模型配置和服务端执行边界，但这些问题本身还没有解决，尤其是服务端 `EMBEDDING_MODEL` 依赖和 feed sync 相关模型调用的配置归属，当前仍然没有正式方案。
+- 未验证项：这轮没有新增自动化验证去证明“隐藏 easy mode 后，setup 交互仍只保留两种合法路径”或“内部保留的 shared mode 分支仍然可用”。它更像一次入口治理和文档校准，而不是运行逻辑回归。
+- 后续动作：如果后面要重新开放 easy mode，建议先把模型配置透传和服务端代执行边界做成显式设计，再决定是否恢复 `questionary` 入口；否则就继续把 shared mode 当作内部实验能力维护，并补一份更正式的 enable 条件清单。
+
+### 建议 Commit Message（git-cz）
+
+- `docs(shared-mode): hide easy setup and align bottleneck status`
+
 ## CHANGELOG - 2026-05-19 14:49 - shared mode 补齐 GET 参数过滤与 Lark 启动边界
 
 ### 撰写时间

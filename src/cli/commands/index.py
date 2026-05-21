@@ -656,9 +656,10 @@ def setupCLI(args: Namespace) -> int:
     database_config_mode = questionary.select(
         "Choose database configuration mode",
         choices=[
-            questionary.Choice(
-                "Easy setup (Use cloud database with encrypted data)", value="easy"
-            ),
+            # 暂不启用，详见 docs/BOTTLENECK.md
+            # questionary.Choice(
+            #     "Easy setup (Use cloud database with encrypted data)", value="easy"
+            # ),
             questionary.Choice(
                 "Docker setup (recommended, but requires Docker installed)",
                 value="docker",
