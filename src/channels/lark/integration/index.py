@@ -5,7 +5,12 @@ import threading
 import time
 from typing import Any, List
 
-from src.agents.graphs.ConversationGraph.graph import getConversationGraph
+from psycopg import OperationalError
+
+from src.agents.graphs.ConversationGraph.graph import (
+    getConversationGraph,
+    rebuildConversationGraph,
+)
 from src.agents.graphs.ConversationGraph.state import ConversationGraphOutput
 from src.channels.lark.integration.utils import (
     sendCard2OpenId,
@@ -86,6 +91,15 @@ def _runAsync(coro: Any, timeout_seconds: int = 120) -> Any:
     return future.result(timeout=timeout_seconds)
 
 
+def _isClosedCheckpointerConnectionError(error: Exception) -> bool:
+    """
+    只对已知的 PostgreSQL 连接失效场景做一次自愈重试。
+    """
+    return isinstance(error, OperationalError) and "the connection is closed" in str(
+        error
+    )
+
+
 async def processMessages(
     user_id: int, fr_id: int, messages: list[str]
 ) -> tuple[List[str], str]:
@@ -95,7 +109,6 @@ async def processMessages(
     session_start = time.perf_counter()
     logger.info(f"开始处理本批次消息：{messages}")
 
-    graph = await getConversationGraph()
     short_term_memory_config = {"configurable": {"thread_id": str(fr_id)}}
     state = {
         "request": {
@@ -104,9 +117,20 @@ async def processMessages(
             "messages_received": messages,
         },
     }
-    response: ConversationGraphOutput = await graph.ainvoke(
-        state, config=short_term_memory_config
-    )
+    graph = await getConversationGraph()
+    try:
+        response: ConversationGraphOutput = await graph.ainvoke(
+            state, config=short_term_memory_config
+        )
+    except OperationalError as error:
+        if not _isClosedCheckpointerConnectionError(error):
+            raise
+        logger.warning(
+            "ConversationGraph checkpointer connection closed, rebuilding graph and retrying once",
+            exc_info=True,
+        )
+        graph = await rebuildConversationGraph()
+        response = await graph.ainvoke(state, config=short_term_memory_config)
 
     logger.info(f"处理完成，耗时：{time.perf_counter() - session_start}s")
     llm_output = response.get("llm_output", {})
@@ -221,7 +245,7 @@ def _scheduleFlush(open_id: str) -> None:
 
 def filterDuplicatedMessage(message: str, open_id: str) -> bool:
     """
-    过滤短时间内的完全重复消息
+    防抖：过滤短时间内的完全重复消息
     """
     current_time = int(time.time())
     second_threshold = (
@@ -303,6 +327,7 @@ def messageHandler(message: str, open_id: str) -> None:
     """
     消息处理入口
     """
+    # 防抖
     if filterDuplicatedMessage(message, open_id):
         return
 

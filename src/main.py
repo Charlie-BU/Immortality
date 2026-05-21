@@ -14,7 +14,7 @@ def preconfig() -> None:
     # 配置日志
     LOG_DIR = IMMORTALITY_HOME_DIR / "logs"
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    LOG_FILE = LOG_DIR / f"app-{datetime.now().strftime('%Y%m%d')}.log"
+    LOG_FILE = LOG_DIR / f"app-{datetime.now().astimezone().strftime('%Y%m%d')}.log"
 
     logging.basicConfig(
         level=logging.INFO,
