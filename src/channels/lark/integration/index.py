@@ -19,6 +19,7 @@ from src.channels.lark.integration.utils import (
 from src.channels.lark.integration.menu import handleMenuCommand
 from src.cli.session import saveLocalSession
 from src.cli.utils import getCurrentUserFromLocalSession
+from src.service_dispatcher import dispatchServiceCall, isSharedDatabaseMode
 from src.services.figure_and_relation import ifFRBelongsToUser
 from src.services.user import getUserIdByOpenId, userLoginByOpenId
 
@@ -160,7 +161,10 @@ def _sendBatchMessages(open_id: str) -> None:
     if not messages_to_process:
         return
 
-    user_id = getUserIdByOpenId(open_id).get("user_id")
+    user_id = dispatchServiceCall(
+        getUserIdByOpenId,
+        {"open_id": open_id},
+    ).get("user_id")
     if user_id is None:
         sendCard2OpenId(
             open_id=open_id,
@@ -181,7 +185,12 @@ def _sendBatchMessages(open_id: str) -> None:
         )
         return
 
-    if not ifFRBelongsToUser(user_id, fr_id).get("is_belong"):
+    is_fr_belong_to_user = dispatchServiceCall(
+        ifFRBelongsToUser,
+        {"user_id": user_id, "fr_id": fr_id},
+    ).get("is_belong")
+
+    if not is_fr_belong_to_user:
         with _state_lock:
             _active_fr_by_open_id.pop(open_id, None)
         sendCard2OpenId(
@@ -271,7 +280,20 @@ def loginIfNeeded(open_id: str) -> bool:
         getCurrentUserFromLocalSession()
         return True
     except Exception:
+        # 共享数据库场景特判
+        # ⚠️ 共享数据库场景下，不能直接通过 open_id 触发登录，userLoginByOpenId 不能暴露到外部，远端 userLogin 登录逻辑必须设定为永不过期
+        if isSharedDatabaseMode():
+            logger.warning(f"Shared database mode, login expired, open_id={open_id}")
+            sendCard2OpenId(
+                open_id=open_id,
+                title="登录失效",
+                content="请通过 CLI 重新登录",
+                theme="red",
+            )
+            return False
+
         try:
+            # 共享数据库场景永不触发以下逻辑，无需使用 dispatchServiceCall
             login_res = userLoginByOpenId(open_id)
             if login_res.get("status") != 200:
                 sendCard2OpenId(
@@ -328,7 +350,10 @@ def messageHandler(message: str, open_id: str) -> None:
         )
         return
 
-    user_id = getUserIdByOpenId(open_id).get("user_id")
+    user_id = dispatchServiceCall(
+        getUserIdByOpenId,
+        {"open_id": open_id},
+    ).get("user_id")
     if user_id is None:
         sendCard2OpenId(
             open_id=open_id,
@@ -349,7 +374,12 @@ def messageHandler(message: str, open_id: str) -> None:
         )
         return
 
-    if not ifFRBelongsToUser(user_id, fr_id).get("is_belong"):
+    is_fr_belong_to_user = dispatchServiceCall(
+        ifFRBelongsToUser,
+        {"user_id": user_id, "fr_id": fr_id},
+    ).get("is_belong")
+
+    if not is_fr_belong_to_user:
         with _state_lock:
             _active_fr_by_open_id.pop(open_id, None)
         sendCard2OpenId(

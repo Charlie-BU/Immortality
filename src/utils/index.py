@@ -3,11 +3,15 @@ from enum import Enum
 import json
 import math
 import os
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, TypeVar
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from sqlalchemy.orm import Session
+import asyncio
+import threading
 
 from src.database.models import FigureAndRelation, OriginalSource
+
+# todo: 待治理：模块顶层引入太多依赖，不是纯 utils
 
 
 def timeDecay(created_at: datetime) -> float:
@@ -91,6 +95,26 @@ def cleanList(items: list):
     return result
 
 
+def parseInt(value: Any):
+    """
+    尝试将值转换为整数，返回 None 如果转换失败。
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def parseFloat(value: Any):
+    """
+    尝试将值转换为浮点数，返回 None 如果转换失败。
+    """
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def stringifyValue(value: Any, strip: bool = True) -> str:
     """
     文本化，支持 enum、List[str|dict]、None 等类型。
@@ -125,7 +149,7 @@ def stringifyValue(value: Any, strip: bool = True) -> str:
 
 def serialize2String(value: Any) -> str | None:
     """
-    将 str/list/dict/enum 等不同类型的值序列化为字符串
+    将 str/list/dict/enum 等不同类型的值序列化为 json 字符串
     """
     if value is None:
         return None
@@ -149,6 +173,56 @@ def jsonDefault(obj):
     if isinstance(obj, datetime):
         return obj.isoformat()
     return str(obj)
+
+
+def toSerializableValue(value: Any) -> Any:
+    """
+    递归转换为可安全透传给 HTTP / JSON 的基础类型
+    """
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {
+            stringifyValue(key, strip=False): toSerializableValue(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [toSerializableValue(item) for item in value]
+    if isinstance(value, tuple):
+        return [toSerializableValue(item) for item in value]
+    return value
+
+
+T = TypeVar("T")
+
+
+def runAwaitableSync(awaitable_factory: Callable[..., Awaitable[T]]) -> T:
+    """
+    同步运行异步函数
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(awaitable_factory())
+
+    result_box: dict[str, T] = {}
+    error_box: dict[str, BaseException] = {}
+
+    def _runner() -> None:
+        try:
+            result_box["value"] = asyncio.run(awaitable_factory())
+        except BaseException as err:  # pragma: no cover - propagated to caller
+            error_box["error"] = err
+
+    worker = threading.Thread(target=_runner, daemon=True)
+    worker.start()
+    worker.join()
+
+    if "error" in error_box:
+        raise error_box["error"]
+    return result_box["value"]
 
 
 async def ainvokeJsonWithRetry(

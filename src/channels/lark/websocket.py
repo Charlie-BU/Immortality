@@ -76,7 +76,9 @@ def startLarkService():
     """
     # 延迟导入，避免环境变量未加载
     from src.channels.lark.integration.index import messageHandler
+    from src.service_dispatcher import isSharedDatabaseMode
     from src.database.models import initDatabaseIfNeeded
 
-    initDatabaseIfNeeded()
+    if not isSharedDatabaseMode():
+        initDatabaseIfNeeded()
     startLarkWebSocketServer(messageHandler)

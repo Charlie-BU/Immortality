@@ -10,9 +10,9 @@ from src.cli.utils import (
     printServiceResInCLI,
 )
 from src.database.enums import Gender, parseEnum
+from src.service_dispatcher import dispatchServiceCall
 from src.services.user import (
     getUserById,
-    getUserIdByAccessToken,
     userBindLark,
     userLogin,
     userModifyPassword,
@@ -125,13 +125,15 @@ def loginCLI(args: Namespace) -> int:
         if password == "":
             raise CLIError("Password cannot be empty", exit_code=2)
 
-    res = userLogin(username=username, password=password)
+    res = dispatchServiceCall(userLogin, {"username": username, "password": password})
+
     if res.get("status") != 200:
         clearLocalSession()
         printServiceResInCLI(res, as_json=args.json)
         return 1
 
     token = res.get("access_token")
+    user_id = res.get("user_id")
     if not isinstance(token, str) or token.strip() == "":
         printServiceResInCLI(
             {"status": -1, "message": "Login success but token is missing"},
@@ -139,7 +141,6 @@ def loginCLI(args: Namespace) -> int:
         )
         return 1
 
-    user_id = getUserIdByAccessToken(token=token)
     saveLocalSession(
         {
             "access_token": token,
@@ -231,12 +232,15 @@ def registerCLI(args: Namespace) -> int:
     if not isinstance(gender, Gender):
         raise CLIError("Invalid gender", exit_code=2)
 
-    res = userRegister(
-        username=username,
-        nickname=nickname,
-        gender=gender.value,
-        email=email,
-        password=password,
+    res = dispatchServiceCall(
+        userRegister,
+        {
+            "username": username,
+            "nickname": nickname,
+            "gender": gender.value,
+            "email": email,
+            "password": password,
+        },
     )
     printServiceResInCLI(res, as_json=args.json)
     return 0 if res.get("status") == 200 else 1
@@ -259,8 +263,16 @@ def whoamiCLI(args: Namespace) -> int:
     获取当前登录用户信息
     """
     user_id = getCurrentUserFromLocalSession().get("user_id")
-    res = getUserById(id=user_id)
-    user = res.get("user")
+    res = dispatchServiceCall(getUserById, {"id": user_id})
+    user_raw = res.get("user")
+    if user_raw is None:
+        raise CLIError("User not found", exit_code=2)
+    user = {
+        "username": user_raw.get("username"),
+        "nickname": user_raw.get("nickname"),
+        "gender": user_raw.get("gender"),
+        "email": user_raw.get("email"),
+    }
 
     if args.json:
         printServiceResInCLI(res, as_json=True)
@@ -291,10 +303,9 @@ def modifyPasswordCLI(args: Namespace) -> int:
         old_password = getpass.getpass("Old password: ")
         new_password = getpass.getpass("New password: ")
 
-    res = userModifyPassword(
-        id=user_id,
-        old_password=old_password,
-        new_password=new_password,
+    res = dispatchServiceCall(
+        userModifyPassword,
+        {"id": user_id, "old_password": old_password, "new_password": new_password},
     )
     printServiceResInCLI(res, as_json=args.json)
     return 0 if res.get("status") == 200 else 1
@@ -309,6 +320,8 @@ def bindLarkCLI(args: Namespace) -> int:
     if not isinstance(lark_open_id, str) or lark_open_id.strip() == "":
         raise CLIError("lark-open-id is required", exit_code=2)
 
-    res = userBindLark(user_id=user_id, lark_open_id=lark_open_id.strip())
+    res = dispatchServiceCall(
+        userBindLark, {"user_id": user_id, "lark_open_id": lark_open_id.strip()}
+    )
     printServiceResInCLI(res, as_json=args.json)
     return 0 if res.get("status") == 200 else 1

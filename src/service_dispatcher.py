@@ -1,15 +1,21 @@
-import asyncio
 import os
-import threading
 import inspect
-from typing import Any, Awaitable, Callable, TypeVar
+import logging
+from typing import Any, Awaitable, Callable
 
+from src.utils.index import runAwaitableSync, toSerializableValue
 from src.utils.request import afetch
 
-# todo
+logger = logging.getLogger(__name__)
+
 
 SERVICE_API_MAP = {
     # user_router
+    "getUserIdByAccessToken": {
+        "method": "POST",
+        "path": "/user/getUserIdByAccessToken",
+        "auth_required": False,
+    },
     "getUserById": {
         "method": "GET",
         "path": "/user/getUserById",
@@ -18,29 +24,29 @@ SERVICE_API_MAP = {
     "getUserIdByOpenId": {
         "method": "GET",
         "path": "/user/getUserIdByOpenId",
-        "auth_required": False,
+        "auth_required": True,
     },
     "userLogin": {
         "method": "POST",
-        "path": "/user/userLogin",
+        "path": "/user/login",
         "auth_required": False,
     },
     "userRegister": {
         "method": "POST",
-        "path": "/user/userRegister",
+        "path": "/user/register",
         "auth_required": False,
     },
     "userModifyPassword": {
         "method": "POST",
-        "path": "/user/userModifyPassword",
+        "path": "/user/modifyPassword",
         "auth_required": True,
     },
     "userBindLark": {
         "method": "POST",
-        "path": "/user/userBindLark",
+        "path": "/user/bindLark",
         "auth_required": True,
     },
-    # fr_router
+    # figure_and_relation_router
     "addFigureAndRelation": {
         "method": "POST",
         "path": "/fr/addFigureAndRelation",
@@ -66,16 +72,6 @@ SERVICE_API_MAP = {
         "path": "/fr/getAllFigureAndRelations",
         "auth_required": True,
     },
-    "frBelongsToUser": {
-        "method": "GET",
-        "path": "/fr/frBelongsToUser",
-        "auth_required": True,
-    },
-    "getFRAccessContextByOpenId": {
-        "method": "GET",
-        "path": "/fr/getFRAccessContextByOpenId",
-        "auth_required": False,
-    },
     "addFRBuildingGraphReport": {
         "method": "POST",
         "path": "/fr/addFRBuildingGraphReport",
@@ -96,6 +92,11 @@ SERVICE_API_MAP = {
         "path": "/fr/getAllFRBuildingGraphReport",
         "auth_required": True,
     },
+    "getFROverallUpdateLogsThisRound": {
+        "method": "GET",
+        "path": "/fr/getFROverallUpdateLogsThisRound",
+        "auth_required": True,
+    },
     "getFRAllContext": {
         "method": "GET",
         "path": "/fr/getFRAllContext",
@@ -111,12 +112,12 @@ SERVICE_API_MAP = {
         "path": "/fr/syncAllFeedsToFRCore",
         "auth_required": True,
     },
-    "getFROverallUpdateLogsThisRound": {
+    "ifFRBelongsToUser": {
         "method": "GET",
-        "path": "/fr/getFROverallUpdateLogsThisRound",
+        "path": "/fr/ifFRBelongsToUser",
         "auth_required": True,
     },
-    # feed_router
+    # fine_grained_feed_router
     "addFineGrainedFeed": {
         "method": "POST",
         "path": "/feed/addFineGrainedFeed",
@@ -199,7 +200,7 @@ SERVICE_API_MAP = {
         "auth_required": True,
     },
     "recallKnowledgePieces": {
-        "method": "POST",
+        "method": "GET",
         "path": "/knowledge/recallKnowledgePieces",
         "auth_required": True,
     },
@@ -221,9 +222,9 @@ SERVICE_API_MAP = {
 }
 
 
-def _isSharedDatabaseMode() -> bool:
+def isSharedDatabaseMode() -> bool:
     """
-    判断是否使用共享数据库模式
+    判断当前是否使用共享数据库模式
     """
     return (os.getenv("USE_SHARED_DATABASE", "False") or "").strip().lower() == "true"
 
@@ -238,82 +239,90 @@ def _resolveServiceBaseURL() -> str:
     return base_url.rstrip("/")
 
 
-T = TypeVar("T")
-
-
-def _runAwaitableSync(awaitable_factory: Callable[..., Awaitable[T]]) -> T:
+def _buildAuthHeaders(auth_required: bool) -> dict[str, str]:
     """
-    同步运行异步函数
+    构造鉴权请求头
     """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(awaitable_factory())
+    if not auth_required:
+        return {}
 
-    result_box: dict[str, T] = {}
-    error_box: dict[str, BaseException] = {}
+    # 延迟导入，避免循环依赖
+    from src.cli.utils import getCurrentUserFromLocalSession
 
-    def _runner() -> None:
-        try:
-            result_box["value"] = asyncio.run(awaitable_factory())
-        except BaseException as err:  # pragma: no cover - propagated to caller
-            error_box["error"] = err
+    access_token = getCurrentUserFromLocalSession()["access_token"]
+    return {"Authorization": f"Bearer {access_token}"}
 
-    worker = threading.Thread(target=_runner, daemon=True)
-    worker.start()
-    worker.join()
 
-    if "error" in error_box:
-        raise error_box["error"]
-    return result_box["value"]
+def _requestHTTPByConfig(
+    *,
+    service_name: str,
+    args: dict[str, Any],
+    api_map: dict[str, dict[str, Any]],
+) -> Any:
+    """
+    根据 API 配置发起 HTTP 请求
+    """
+    api_config = api_map.get(service_name)
+    if api_config is None:
+        raise KeyError(f"API `{service_name}` is not configured")
+
+    base_url = _resolveServiceBaseURL()
+    url = f"{base_url}{api_config['path']}"
+    method = api_config["method"]
+    headers = _buildAuthHeaders(api_config["auth_required"])
+    normalized_args = toSerializableValue(args)
+
+    def _send() -> Awaitable[dict[str, Any]]:
+        if method == "GET":
+            query_args = {
+                key: value
+                for key, value in normalized_args.items()
+                if value is not None  # GET 请求参数不能为 None
+            }
+            return afetch(url, method=method, query_params=query_args, headers=headers)
+        return afetch(url, method=method, json_data=normalized_args, headers=headers)
+
+    # 同步运行异步方法
+    response = runAwaitableSync(_send)
+    body = response.get("body")
+    return body
 
 
 def dispatchServiceCall(
     service: Callable[..., dict[str, Any]], args: dict[str, Any]
-) -> dict[str, Any]:
+) -> Any:
     """
-    调用服务接口，按照是否是共享数据库模式分发请求到本地服务或远程 http 服务
+    调用服务接口，按照是否是共享数据库模式分发请求到本地服务或远程 http API
     """
-    # 延迟导入，避免循环依赖
-    from src.cli.utils import getCurrentUserFromLocalSession
-
-    if not _isSharedDatabaseMode():
+    if not isSharedDatabaseMode():
+        # 非共享数据库模式，直接调用本地 service
+        logger.info(
+            f"Non-shared database mode, calling local service: {service.__name__}"
+        )
         local_result = service(**args)
         # 本地模式下，service 可能是同步或异步函数，需要统一转换为同步对象
         if inspect.isawaitable(local_result):
-            return _runAwaitableSync(lambda: local_result)
+            return runAwaitableSync(lambda: local_result)
         return local_result
 
+    # 共享数据库模式，发起 HTTP 请求
+    logger.info(f"Shared database mode, calling remote service: {service.__name__}")
     service_name = service.__name__
-    service_config = SERVICE_API_MAP.get(service_name)
-    if service_config is None:
-        raise KeyError(f"Service `{service_name}` is not configured in SERVICE_API_MAP")
-
-    base_url = _resolveServiceBaseURL()
-    url = f"{base_url}{service_config['path']}"
-    method = service_config["method"]
-
-    headers: dict[str, str] = {}
-    if service_config["auth_required"]:
-        access_token = getCurrentUserFromLocalSession()["access_token"]
-        headers["Authorization"] = f"Bearer {access_token}"
-
-    def _send() -> Awaitable[dict[str, Any]]:
-        if method == "GET":
-            return afetch(url, method=method, query_params=args, headers=headers)
-        return afetch(url, method=method, json_data=args, headers=headers)
-
-    response = _runAwaitableSync(_send)
-    body = response.get("body")
-    if not isinstance(body, dict):
-        return {"status": response.get("status_code", -1), "message": str(body)}
-    return body
+    return _requestHTTPByConfig(
+        service_name=service_name, args=args, api_map=SERVICE_API_MAP
+    )
 
 
 # if __name__ == "__main__":
 #     import dotenv
 #     from src.cli.constants import IMMORTALITY_ENV_PATH
-#     from src.services.user import getUserById
+#     from src.services.user import getUserById, userLogin
+
+#     logging.basicConfig(
+#         level=logging.INFO,
+#         force=True,
+#     )
 
 #     dotenv.load_dotenv(IMMORTALITY_ENV_PATH)
+#     print(dispatchServiceCall(userLogin, {"username": "", "password": ""}))
 #     print(dispatchServiceCall(getUserById, {"id": 1}))

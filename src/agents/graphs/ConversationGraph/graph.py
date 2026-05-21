@@ -14,7 +14,8 @@ from src.agents.graphs.ConversationGraph.nodes import (
     nodeLoadFRAndPersona,
     nodeRecallFeedsFromDB,
 )
-from src.agents.graphs.checkpointer import acloseCheckpointer, agetCheckpointer
+from src.agents.graphs.checkpointer import agetCheckpointer
+from src.service_dispatcher import isSharedDatabaseMode
 
 logger = logging.getLogger(__name__)
 _conversation_graph_instance: CompiledStateGraph | None = None
@@ -59,7 +60,13 @@ async def buildConversationGraphWithMemory() -> CompiledStateGraph:
     【注意】graph 中存在大量异步节点，必须使用异步 checkpointer，必须用 ainvoke 调用图
     """
     graph = buildBaseConversationGraph()
-    checkpointer = await agetCheckpointer()
+    if isSharedDatabaseMode():
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        # 共享数据库模式下，不能直接从 db URI 获取 checkpointer，降级为 InMemorySaver
+        checkpointer = InMemorySaver()
+    else:
+        checkpointer = await agetCheckpointer()
     return graph.compile(checkpointer=checkpointer)
 
 
