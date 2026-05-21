@@ -396,6 +396,14 @@ immortality lark-service start
 
 ### 推荐：后台启动（生产 / 长时运行）
 
+务必先完成登录，再启动服务：
+
+```bash
+immortality auth login
+```
+
+如果未登录，`lark-service start` 运行后无法正确获取本地 session，飞书消息链路也无法正常工作。
+
 实际使用建议采用后台方式启动，避免阻塞当前终端：
 
 ```bash
