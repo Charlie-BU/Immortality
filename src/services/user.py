@@ -1,7 +1,8 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from urllib.parse import unquote
 from sqlalchemy import or_
 from jose import jwt
-from jose.exceptions import JWTError
 import os
 import logging
 from datetime import datetime, timedelta, timezone
@@ -9,6 +10,9 @@ from datetime import datetime, timedelta, timezone
 from src.database.index import session
 from src.database.models import User
 from src.database.enums import Gender, parseEnum
+
+if TYPE_CHECKING:
+    from robyn import Request
 
 
 logger = logging.getLogger(__name__)
@@ -21,8 +25,9 @@ def createAccessToken(
     生成access token
     """
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + expires_delta
-    to_encode.update({"exp": expire})
+    if expires_delta is not None:
+        expire = datetime.now(timezone.utc) + expires_delta
+        to_encode.update({"exp": expire})
 
     ALGORITHM = os.getenv("ALGORITHM")
     SECRET_KEY = os.getenv("LOGIN_SECRET")
@@ -45,21 +50,22 @@ def decodeAccessToken(token: str) -> dict:
 
 def getUserIdByAccessToken(
     token: str | None = None,
+    request: Request | None = None,
 ) -> int:
     """
-    通过access token获取user id
+    通过 access token 或 Robyn Request 实例获取 user_id
     """
-    if token is None:
-        raise Exception("Access token is required")
-    try:
-        payload = decodeAccessToken(token)
-    except JWTError as e:
-        logger.warning(f"Decode access token failed: {str(e)}")
-        raise Exception("Invalid or expired access token")
-    id = payload.get("id")
-    if not isinstance(id, int):
-        raise Exception("Invalid access token payload")
-    return id
+    if request is not None and token is not None:
+        raise Exception("Request and token should not be provided at the same time")
+    if request is not None:
+        authorization = request.headers.get("Authorization")
+        if not authorization or not authorization.startswith("Bearer "):
+            raise Exception("Invalid Authorization header format")
+        token = authorization.split("Bearer ")[1]
+    elif token is None:
+        raise Exception("Either request or token is required")
+    payload = decodeAccessToken(token)
+    return int(payload["id"])
 
 
 def getUserById(
@@ -78,7 +84,7 @@ def getUserById(
         return {
             "status": 200,
             "message": "Get user success",
-            "user": user.toJson(include=["username", "nickname", "gender", "email"]),
+            "user": user.toJson(),
         }
 
 
@@ -133,13 +139,19 @@ def getUserIdByOpenId(
 def userLogin(
     username: str,
     password: str,
+    from_remote: bool = False,
 ) -> dict:
     """
     用户登录
+    ⚠️ 注意：采用共享数据库场景下，不能直接通过 open_id 触发登录，userLoginByOpenId 不能暴露到外部；只允许用户通过 CLI 登录
+    因此，远端 userLogin 登录逻辑必须设定为永不过期
     """
     username = username.strip()
     if username == "" or password == "":
         return {"status": -1, "message": "Username or password is empty"}
+    expires_delta: timedelta | None = timedelta(hours=24)
+    if from_remote:
+        expires_delta = None
 
     with session() as db:
         user = (
@@ -158,11 +170,13 @@ def userLogin(
                 "message": "Wrong password",
             }
         access_token = createAccessToken(
-            data={"id": user.id, "username": user.username}
+            data={"id": user.id, "username": user.username},
+            expires_delta=expires_delta,
         )
         return {
             "status": 200,
             "message": "Login success",
+            "user_id": user.id,
             "access_token": access_token,
         }
 

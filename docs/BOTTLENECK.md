@@ -1,3 +1,19 @@
+## 单一飞书 Bot 问题
+
+### 问题
+
+目前用户通过 `pip` 或 `uv` 安装 `immortality` 后，会在本地 HOME 目录创建 `.immortality`，其中包含 `.env` 等用户配置。  
+现有实现基于单组环境变量（`LARK_APP_ID`、`LARK_APP_SECRET`、`LARK_CARD_TEMPLATE_ID`），因此 `immortality lark-service start` 每次只能启动一个 Bot 的 websocket 服务。  
+当用户拥有多个飞书 Bot 且希望按需切换启动时，当前机制无法满足。
+
+### 长期方案
+
+将单 Bot 环境变量改为“列表化配置”，例如 `bots.yaml` / `bots.json` 或 `.immortality/bots/*.env`。  
+CLI 明确支持按需选择：
+
+- `immortality lark-service start --bot <name>`
+- `immortality lark-service start --all`
+
 # 共享数据库问题
 
 ## 问题
@@ -37,52 +53,91 @@
 
 ## 关键问题进展
 
-在这轮重构里，我遇到过两个关键问题：其中第一个已通过补救方案解决，第二个仍然是最终 bottleneck。
+在这轮重构里，我遇到过两个关键问题。现在回头看，它们都已经有了可落地的处理方式，但最终落地形态和我当时设想的不完全一样。
 
 ### 1) 登录态有效期与 Graph 稳定性冲突（已解决）
 
 用户在 CLI 登录后，本地会保存登录态 `token`。而在安全前提下，大部分 API（包括 Graph 工作流中涉及数据库操作的 service，在 `USE_SHARED_DATABASE` 场景下即 API 调用）都需要鉴权。
 
-问题在于：调用 API 意味着必须持续保持有效登录态；而本地 token 有有效期，过期后要重新登录。Graph 运行在飞书机器人中，一旦登录态过期，就会导致 Graph 执行失败。
+问题在于：只要共享数据库模式依赖远程 API，Graph 在飞书机器人里运行时就必须持续拿到有效 token；一旦 token 过期，整条链路都会失败。
 
-我最终采用了如下补救方案，并已解决这个问题：
+最终落地时，我没有把“仅凭飞书 `open_id` 登录”开放成远程 API，而是改成了下面这套更收敛的方案：
 
-- 在监听到用户消息后，先通过 user service 判断 token 是否过期。
-- 若过期则自动触发重新登录，并把新 token 写回本地 session。
-- 由于该场景不可能让用户手输账号密码，我在 user service 新增了一个“仅凭飞书 `open_id` 登录”的方法。
+- 远端 `user/login` 在共享数据库模式下返回不过期 token。
+- CLI 本地 session 通过 `getUserIdByAccessToken` 做有效性校验。
+- 飞书机器人链路在共享数据库模式下不再尝试通过 `open_id` 自动续登；如果本地 session 不存在或失效，直接提示用户重新通过 CLI 登录。
 
-但需要注意的是，它绝不能作为通用 API 暴露给外部，只允许在飞书机器人自动续登这个特定场景内部触发。
+这样做的结果是：共享数据库模式下不需要把 `userLoginByOpenId` 暴露出去，安全边界更清晰；代价是用户一旦本地 session 丢失，仍需要手动重新登录一次。
 
-### 2) `ConversationGraph` 的 checkpointer 无法通过 API 抽象（未解决）
+### 2) `ConversationGraph` 的 checkpointer 无法通过 API 抽象（已绕开）
 
-`ConversationGraph` 的短期记忆 `checkpoint` 仍存储在 PostgreSQL。  
-但这里不是我通过 service 主动建连数据库，而是借助 `langgraph` 的能力，通过数据库 `URI` 直接创建 `checkpointer` 实例。
+`ConversationGraph` 的短期记忆原本依赖 PostgreSQL checkpointer。  
+这里不是普通 service 调数据库，而是 `langgraph` 直接根据数据库 `URI` 构造 `checkpointer`。这意味着它天然没法像普通 service 一样被 `dispatchServiceCall` 分流到远程 HTTP API。
 
-这导致一个根本限制：
+这个问题最后不是“继续抽象”，而是直接换了一条路：
 
-- 在 `USE_SHARED_DATABASE` 场景下，这部分无法通过 `dispatchServiceCall` 分流到远程 API。
-- API 也不可能返回一个可用的 `checkpointer` 实例给本地进程。
+- 非共享数据库模式下，`ConversationGraph` 继续使用 PostgreSQL checkpointer。
+- 共享数据库模式下，`ConversationGraph` 不再尝试获取远程 checkpointer，而是直接降级为 `InMemorySaver`。
 
-换句话说：要正确创建 `checkpointer`，数据库 URI 必须在本地可得。  
-这就是最后一个 bottleneck，也是当前方案最终被卡死的原因。
+这等于承认一个事实：**checkpointer 这层并不适合远程 API 化。**  
+我最后选择接受共享数据库模式下的短期记忆退化，用进程内内存态替代数据库持久化，从而把“必须在本地暴露数据库 URI”这个硬限制彻底拿掉。
+
+代价也很明确：
+
+- 共享数据库模式下，短期记忆只在当前进程内有效。
+- 飞书服务或本地进程重启后，这部分 memory 会丢失，不能像原来那样持久化在 PostgreSQL 里。
 
 ## 当前结论
 
-我已经 `revert` 了上述全部改动。  
-接下来准备采用其他路径，不再依赖“通过远程 API 调用数据库相关 service”的方案。
+到 `feature/shared-db-support` 这个分支为止，共享数据库模式的主链路已经基本打通了。更准确地说，数据库侧的接入复杂度已经被明显压下来了，但模型侧和服务归属侧还没有完全收口，所以它现在仍然是一个“内部已跑通、暂不开放给用户”的方案。也正因为如此，当前 CLI 已经把 `setup` 里的 `easy mode` 入口先隐藏掉了，不再作为默认可选项直接提供给用户。
 
-## 单一飞书 Bot 问题
+当前实际已经落地的部分如下：
 
-### 问题
+1. 模式切换已经成型。
+    - 整个系统现在以 `USE_SHARED_DATABASE=True` 作为共享数据库模式开关。
+    - `easy mode` 这套配置语义和底层分支逻辑已经实现过：在共享数据库模式下，不再要求用户配置本地 `DATABASE_URI` 和 `CHECKPOINT_DATABASE_URI`。
+    - 但当前 CLI 已经暂时隐藏 `setup` 里的 `easy mode` 选项，不再把它作为可直接选择的公开入口。
+    - CLI `doctor` 也补上了共享模式分支：本地库检查被替换为对 `HTTP_BASE_URL/ping` 的连通性检查。
 
-目前用户通过 `pip` 或 `uv` 安装 `immortality` 后，会在本地 HOME 目录创建 `.immortality`，其中包含 `.env` 等用户配置。  
-现有实现基于单组环境变量（`LARK_APP_ID`、`LARK_APP_SECRET`、`LARK_CARD_TEMPLATE_ID`），因此 `immortality lark-service start` 每次只能启动一个 Bot 的 websocket 服务。  
-当用户拥有多个飞书 Bot 且希望按需切换启动时，当前机制无法满足。
+2. 服务端承接了原本需要直连数据库的大部分能力。
+    - 新增了独立的服务端入口和 Robyn 路由层。
+    - 已经落地的 router 覆盖 `user`、`figure_and_relation`、`fine_grained_feed`、`knowledge` 这几类核心 service。
+    - 路由层统一负责参数解析、鉴权、调用既有 service，并继续让数据库操作留在服务端完成。
 
-### 长期方案
+3. 客户端侧已经形成统一 dispatcher。
+    - 新增 `ServiceDispatcher` 模块和 `SERVICE_API_MAP`。
+    - `dispatchServiceCall` 会根据当前模式自动选择“本地直接调 service”还是“走远端 HTTP API”。
+    - 参数透传、枚举/时间等值的序列化、鉴权请求头注入，已经在 dispatcher 里做了统一处理。
 
-将单 Bot 环境变量改为“列表化配置”，例如 `bots.yaml` / `bots.json` 或 `.immortality/bots/*.env`。  
-CLI 明确支持按需选择：
+4. 主要消费入口已经切到 dispatcher。
+    - CLI 的鉴权、FR 管理、部分初始化与自检逻辑，已经按共享模式做了分流。
+    - 飞书消息处理链路里，和用户、FR 归属校验相关的数据库访问，已经改为走 dispatcher。
+    - `ConversationGraph` 和 `FRBuildingGraph` 中原本直接消费 service 的地方，也已经统一改成 `dispatchServiceCall`。
 
-- `immortality lark-service start --bot <name>`
-- `immortality lark-service start --all`
+5. 共享模式下最难绕的 Graph 瓶颈已经被规避掉。
+    - `ConversationGraph` 编译时会根据模式选择 checkpointer 实现。
+    - 本地模式继续走 PostgreSQL checkpointer。
+    - 共享数据库模式直接退化为 `InMemorySaver`，从而不再需要在用户本地暴露共享数据库 `URI`。
+    - `lark-service start` 在共享模式下也不会再初始化本地数据库。
+
+6. 登录态链路已经调整为共享模式可运行的形态。
+    - 远端登录接口返回不过期 token，避免 Graph 执行期间频繁撞上 token 过期。
+    - 本地 session 校验已经能够通过远端鉴权接口完成。
+    - 出于安全考虑，`userLoginByOpenId` 仍然只允许留在本地内部场景使用，没有作为共享模式通用 API 暴露出去。
+
+这套方案的核心含义其实已经比较明确了：  
+**我已经把“用户必须自己建 PostgreSQL 才能跑起来”这件事拆掉了。**  
+在共享数据库模式下，数据库相关 CRUD 和检索已经基本可以全部收敛到服务端，由本地 CLI / 飞书服务 / Graph 通过 dispatcher 透明消费。
+
+但这不代表共享数据库模式已经可以对外开放。现在还剩下两类没有解决的问题：
+
+1. 服务端 `ark_client` 依赖环境变量 `EMBEDDING_MODEL`，这部分目前无法从用户侧透传。
+2. `syncFeedsToFRCore` 和 `syncAllFeedsToFRCore` 需要调用模型服务；一旦它们在服务端执行，就只能消费服务端自己的模型配置，无法消费用户侧的 `access_token` 和模型环境变量，这和我希望的“能力共享、配置仍归用户”并不一致。
+
+所以，当前最准确的结论不是“共享数据库模式已经完全做完”，而是：
+
+- 数据库问题本身已经基本被解决。
+- 共享数据库模式的技术底座已经落地，主链路也已经跑通。
+- 但 `setup` 侧的 `easy mode` 入口目前已被隐藏，现阶段不会直接引导用户走这条链路。
+- 但模型依赖和服务端代执行的边界还没处理干净。
+- 基于这些剩余问题，**当前共享数据库模式暂不开放给用户使用**。

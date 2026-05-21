@@ -13,6 +13,7 @@ from src.agents.graphs.ConversationGraph.state import (
 from src.agents.llm import arkAinvoke, prepareLLM
 from src.agents.prompt import getPrompt
 from src.database.enums import FineGrainedFeedDimension
+from src.service_dispatcher import dispatchServiceCall
 from src.services.fine_grained_feed import recallFineGrainedFeeds
 from src.services.figure_and_relation import (
     buildFigurePersonaMarkdown,
@@ -223,12 +224,14 @@ def nodeLoadFRAndPersona(state: ConversationGraphState) -> dict:
     user_id = request["user_id"]
     fr_id = request["fr_id"]
 
-    user = getUserById(user_id).get("user")
+    user = dispatchServiceCall(getUserById, {"id": user_id}).get("user")
     if user is None:
         logger.error("User not found")
         raise ValueError("User not found")
 
-    fr = getFigureAndRelation(user_id, fr_id).get("figure_and_relation")
+    fr = dispatchServiceCall(
+        getFigureAndRelation, {"user_id": user_id, "fr_id": fr_id}
+    ).get("figure_and_relation")
     if fr is None:
         logger.error("Figure and relation not found")
         raise ValueError("Figure and relation not found")
@@ -306,35 +309,40 @@ async def nodeRecallFeedsFromDB(state: ConversationGraphState) -> dict:
             "logs": logs,
         }
 
-    recalled = await recallFineGrainedFeeds(
-        user_id=user_id,
-        fr_id=fr_id,
-        scope=[
-            # 重大改动：完全不从 db 召回这两个低语境依赖的信息，避免和 persona 重复注入
-            # {
-            #     "scope": FineGrainedFeedDimension.PERSONALITY,
-            #     "top_k": int(
-            #         os.getenv("TOP_K_PERSONALITY_FEEDS_FOR_CONVERSATION", "3")
-            #     ),
-            # },
-            # {
-            #     "scope": FineGrainedFeedDimension.INTERACTION_STYLE,
-            #     "top_k": int(
-            #         os.getenv("TOP_K_INTERACTION_FEEDS_FOR_CONVERSATION", "3")
-            #     ),
-            # },
-            {
-                "scope": FineGrainedFeedDimension.PROCEDURAL_INFO,
-                "top_k": int(
-                    os.getenv("TOP_K_PROCEDURAL_FEEDS_FOR_CONVERSATION", "10")
-                ),
-            },
-            {
-                "scope": FineGrainedFeedDimension.MEMORY,
-                "top_k": int(os.getenv("TOP_K_MEMORY_FEEDS_FOR_CONVERSATION", "10")),
-            },
-        ],
-        query=query,
+    recalled = dispatchServiceCall(
+        recallFineGrainedFeeds,
+        {
+            "user_id": user_id,
+            "fr_id": fr_id,
+            "scope": [
+                # 重大改动：完全不从 db 召回这两个低语境依赖的信息，避免和 persona 重复注入
+                # {
+                #     "scope": FineGrainedFeedDimension.PERSONALITY,
+                #     "top_k": int(
+                #         os.getenv("TOP_K_PERSONALITY_FEEDS_FOR_CONVERSATION", "3")
+                #     ),
+                # },
+                # {
+                #     "scope": FineGrainedFeedDimension.INTERACTION_STYLE,
+                #     "top_k": int(
+                #         os.getenv("TOP_K_INTERACTION_FEEDS_FOR_CONVERSATION", "3")
+                #     ),
+                # },
+                {
+                    "scope": FineGrainedFeedDimension.PROCEDURAL_INFO,
+                    "top_k": int(
+                        os.getenv("TOP_K_PROCEDURAL_FEEDS_FOR_CONVERSATION", "10")
+                    ),
+                },
+                {
+                    "scope": FineGrainedFeedDimension.MEMORY,
+                    "top_k": int(
+                        os.getenv("TOP_K_MEMORY_FEEDS_FOR_CONVERSATION", "10")
+                    ),
+                },
+            ],
+            "query": query,
+        },
     )
     if recalled.get("status") != 200:
         error_message = f"Recall failed: {recalled.get('message', 'Unknown error')}"
