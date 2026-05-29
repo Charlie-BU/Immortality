@@ -247,7 +247,7 @@ def filterDuplicatedMessage(message: str, open_id: str) -> bool:
     """
     防抖：过滤短时间内的完全重复消息
     """
-    current_time = int(time.time())
+    current_time = time.monotonic()
     second_threshold = (
         10 if message.startswith("/") else 30
     )  # 30 秒内完全相同消息视为重复，菜单命令 10 秒内视为重复

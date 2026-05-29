@@ -1,3 +1,56 @@
+## CHANGELOG - 2026-05-29 23:48 - 对话链路补齐时间语义并收口序列化时区表达
+
+### 撰写时间
+
+- 2026-05-29 23:48
+
+### Base Commit
+
+- e4fde31f422ce3f8129197e93030a03363dbdd3f
+
+### Compare Scope
+
+- working_tree_only
+
+### 背景与改动目标
+
+- 这轮工作区改动的起点是几个分散但本质相同的问题：项目里已经开始显式使用 UTC 时间，但不同链路对“时间到底是给机器算、给协议传，还是给人看”的边界还不够统一。最直观的几个表现是：`ConversationGraph` 一边给 system prompt 注入一份“当前时间”，一边消息本身又没有可靠时间语义；CLI 日志文件按本地自然日落盘，但 `logs` 默认日期的口径并不完全跟它对齐；数据库模型和通用序列化层在遇到 naive `datetime` 时，也还可能把不带 offset 的字符串直接往外透。
+- 一开始最容易想到的修法，是只把 `datetime.now()` 改成 `datetime.now(timezone.utc)`。但顺着链路继续看，会发现这个问题不是“全部改 UTC”这么简单。展示型时间应该更接近本地自然日，防抖窗口更适合单调时钟，模型感知消息时间则应该跟随每条消息本身，而不是依赖 prompt 顶部一行全局时钟。因此这轮最终不是单点替换，而是按场景把时间语义重新收口。
+
+### 改动概览
+
+- `src/agents/graphs/ConversationGraph/nodes.py`：新增 `_buildMessageContent()`，在写入 `HumanMessage` 和本轮 `AIMessage` 时统一附加 UTC ISO8601 时间戳；`nodeCallLLM()` 不再给 `CONVERSATION_SYSTEM_PROMPT` 注入 `current_timestamp`。
+- `prompts/CONVERSATION_SYSTEM_PROMPT.md`：删除 `Current time: {{current_timestamp}}`，让 prompt 本体不再承担“替消息补时间”的职责。
+- `docs/TODOs.md`：把“发消息带时间戳，否则 AI 不理解什么时候的消息”标记为已完成，同时调整 TODO 排序，让这次时间语义治理在任务面板上和代码现状对齐。
+- `src/cli/commands/index.py` 与 `src/main.py`：日志文件名本来就按本地日期生成，这次把 `logsCLI()` 的默认日期改成 `datetime.now().astimezone().strftime("%Y%m%d")`，让“查看当天日志”和“当天日志写到哪个文件”回到同一口径。
+- `src/channels/lark/integration/index.py`：`filterDuplicatedMessage()` 从 `time.time()` 切到 `time.monotonic()`，把“30 秒内去重”从真实世界时间改成纯相对时长判断。
+- `src/database/models.py` 与 `src/utils/index.py`：模型时间列统一声明为 `DateTime(timezone=True)`；`SerializableMixin.toJson()`、`jsonDefault()`、`toSerializableValue()` 统一收口到 `serializeDatetime()`，遇到 naive `datetime` 时先按 UTC 兜底，再输出带 offset 的 ISO8601 字符串。
+- `src/agents/viking.py`：示例数据里的会话元数据时间戳改成 UTC 毫秒时间戳，避免本地时区和 Unix 时间混用。
+
+### 关键链路解析（含上下游）
+
+- 上游依赖：`ConversationGraph` 的时间语义一头连着 `CONVERSATION_SYSTEM_PROMPT`，一头连着 `nodeBuildAndTrimMessage()` / `nodeCallLLM()` 的消息拼装方式。之前 prompt 里那一行 `Current time` 更像全局旁白，模型未必能准确知道“哪条消息发生在什么时候”。这次把时间戳下沉到消息内容本身后，上游 prompt 模板反而被简化了。
+- 当前改动：`nodeBuildAndTrimMessage()` 现在把用户输入包装成 `[timestamp=...]` 开头的文本再写入 `HumanMessage`；本轮模型回复在落回 state 时也走同一套包装。换句话说，时间语义不再由单独模板变量提供，而是成为消息载体的一部分。这样做的代价是上下文里会多一行时间标记，但好处是 summary、trim、后续多轮滚动都能保留这层信息。
+- 下游影响：`ConversationGraph` 下游消费到的是带时间标签的真实消息，不需要额外依赖 prompt 里的“当前时刻”；`docs/TODOs.md` 与 prompt 模板同步收口后，后续再看这条需求时不会出现“代码已做、任务仍未完成”或“prompt 里还有旧口径”的漂移。CLI 侧的下游影响则更直接，`immortality logs` 默认读取的文件终于和 `src/main.py` 落盘的“今天日志”一致。
+- 数据与协议链路这边，上游依赖是 SQLAlchemy 模型和所有复用 `toJson()` / `toSerializableValue()` 的调用方。当前改动把“时间列应声明带时区”和“序列化输出不该丢 offset”这两件事拆开处理：前者落在 ORM 定义，后者落在统一序列化入口。下游无论是 HTTP 透传、日志打印还是 service 返回结构，只要走到这两个入口，输出的时间字符串都会更明确。
+
+### 改动结果与业务影响
+
+- 当前看，这轮最大的收益不是“项目全面切到 UTC”，而是不同场景终于开始用更合适的时间表示。消息理解走 UTC 时间戳，本地日志查看走本地自然日，短时间防抖走单调时钟，数据库与 JSON 输出则尽量保证时区信息不丢。
+- 对 `ConversationGraph` 来说，这次改动把“时间”从 prompt 外挂信息改成消息上下文的一部分，更接近模型真正能消费和记住的输入形态。对 CLI 和 Lark 集成来说，收益则偏稳定性和语义一致性：日志查看少踩跨午夜/跨时区边界，去重逻辑也不再受系统时钟回拨影响。
+- 这轮还有一个工程层收益：`serializeDatetime()` 成为统一出口后，后续如果团队决定把“naive datetime 视为 UTC”升级成告警或直接报错，不需要再全局追着 `isoformat()` 改，可以在一个点上收紧策略。
+
+### 风险与待办
+
+- 当前仍有一个显式边界：序列化层的兜底策略是“naive datetime 按 UTC 理解”。这能避免继续输出不带 offset 的时间字符串，但它本质上还是补救，不是从源头消除歧义。如果后续发现某些 naive 时间其实代表本地时间，这条兜底策略还需要进一步收紧。
+- 已知边界：`src/database/models.py` 这次改的是 ORM 时间列定义，数据库层的真实列类型和迁移动作需要和这套定义保持一致；否则新老环境对 `timezone=True` 的感知仍然可能出现偏差。
+- 未验证项：这轮没有补自动化回归去覆盖“带时间戳消息进入 Graph 后的效果”“CLI 在本地午夜边界查看日志”“序列化出口对 naive / aware datetime 的输出差异”这几类路径。当前收益主要来自代码语义收口，验证深度仍然有限。
+- 另一个保留边界是 `models.py` 里的默认时间生成时机问题。本轮记录聚焦时间语义和序列化收口，这块仍保持现状，后续如果要继续做时间正确性治理，值得单独拆一轮处理。
+
+### 建议 Commit Message（git-cz）
+
+- `refactor(time): align timezone semantics across graph cli and serialization`
+
 ## CHANGELOG - 2026-05-21 15:18 - easy mode 入口隐藏并收口 shared mode 对外结论
 
 ### 撰写时间

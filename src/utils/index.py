@@ -14,6 +14,12 @@ from src.database.models import FigureAndRelation, OriginalSource
 # todo: 待治理：模块顶层引入太多依赖，不是纯 utils
 
 
+def serializeDatetime(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat()
+
+
 def timeDecay(created_at: datetime) -> float:
     """
     时间衰减函数
@@ -171,7 +177,7 @@ def jsonDefault(obj):
     if isinstance(obj, Enum):
         return obj.value
     if isinstance(obj, datetime):
-        return obj.isoformat()
+        return serializeDatetime(obj)
     return str(obj)
 
 
@@ -182,7 +188,7 @@ def toSerializableValue(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, datetime):
-        return value.isoformat()
+        return serializeDatetime(value)
     if isinstance(value, dict):
         return {
             stringifyValue(key, strip=False): toSerializableValue(item)

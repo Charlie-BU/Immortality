@@ -49,6 +49,8 @@ class SerializableMixin:
     """
 
     def toJson(self, include=None, exclude=["password"], include_relations=False):
+        from src.utils.index import serializeDatetime
+
         include = set(include) if include else None
         exclude = set(exclude) if exclude else set()
         mapper = inspect(self.__class__)
@@ -72,7 +74,7 @@ class SerializableMixin:
             value = getattr(self, name)
             # 处理 datetime 类型
             if isinstance(value, datetime):
-                value = value.isoformat()
+                value = serializeDatetime(value)
             # 处理 Enum 类型
             if hasattr(value, "value"):
                 value = (str(value.value)).strip()
@@ -110,7 +112,9 @@ class User(Base, SerializableMixin):
 
     lark_open_id = Column(Text, nullable=True, unique=True, comment="用户飞书open_id")
     created_at = Column(
-        DateTime, default=datetime.now(timezone.utc), comment="用户创建时间"
+        DateTime(timezone=True),
+        default=datetime.now(timezone.utc),
+        comment="用户创建时间",
     )
 
     @staticmethod
@@ -223,10 +227,12 @@ class FigureAndRelation(Base, SerializableMixin):
         comment="是否删除",
     )
     created_at = Column(
-        DateTime, default=datetime.now(timezone.utc), comment="创建时间"
+        DateTime(timezone=True),
+        default=datetime.now(timezone.utc),
+        comment="创建时间",
     )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         default=datetime.now(timezone.utc),
         onupdate=datetime.now(timezone.utc),
         comment="更新时间",
@@ -316,10 +322,12 @@ class FineGrainedFeed(Base, SerializableMixin):
         comment="是否删除",
     )
     created_at = Column(
-        DateTime, default=datetime.now(timezone.utc), comment="创建时间"
+        DateTime(timezone=True),
+        default=datetime.now(timezone.utc),
+        comment="创建时间",
     )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         default=datetime.now(timezone.utc),
         onupdate=datetime.now(timezone.utc),
         comment="更新时间",
@@ -377,10 +385,12 @@ class OriginalSource(Base, SerializableMixin):
         comment="是否删除",
     )
     created_at = Column(
-        DateTime, default=datetime.now(timezone.utc), comment="创建时间"
+        DateTime(timezone=True),
+        default=datetime.now(timezone.utc),
+        comment="创建时间",
     )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         default=datetime.now(timezone.utc),
         onupdate=datetime.now(timezone.utc),
         comment="更新时间",
@@ -429,7 +439,9 @@ class FineGrainedFeedConflict(Base, SerializableMixin):
     )
 
     created_at = Column(
-        DateTime, default=datetime.now(timezone.utc), comment="创建时间"
+        DateTime(timezone=True),
+        default=datetime.now(timezone.utc),
+        comment="创建时间",
     )
 
     def __repr__(self):
@@ -487,7 +499,7 @@ class FROverallUpdateLog(Base, SerializableMixin):
     )
 
     created_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         default=datetime.now(timezone.utc),
         comment="变动时间",
     )
@@ -521,7 +533,7 @@ class FRBuildingGraphReport(Base, SerializableMixin):
         comment="是否删除",
     )
     created_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         default=datetime.now(timezone.utc),
         comment="构建报告创建时间",
     )
@@ -573,13 +585,13 @@ class Knowledge(Base, SerializableMixin):
         comment="是否删除",
     )
     created_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         default=datetime.now(timezone.utc),
         index=True,
         comment="知识创建时间",
     )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         default=datetime.now(timezone.utc),
         onupdate=datetime.now(timezone.utc),
         comment="知识更新时间",
@@ -640,7 +652,7 @@ class Analysis(Base, SerializableMixin):
     )
 
     created_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         default=datetime.now(timezone.utc),
         index=True,
         comment="创建时间",
