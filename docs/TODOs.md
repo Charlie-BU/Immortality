@@ -9,11 +9,12 @@
 - [WIP] Harness 落地，skills 撰写（P0）
 - ❌ 降低用户配置心智成本，提供 shared 数据库（P00）
 - ✅ 发消息带时间戳，否则 AI 不理解什么时候的消息（P00）
-- 内置名人 FR （P0）
-- 优化 feed 抽取提示词，明确时间相关信息若存在（可推断）尽可能出现在 feed 中（P0）
-- multi-env, multi-service 支持（P1）
-- 纠偏 CorrectionGraph、多维度分析 AnalysisGraph、辅助决策 DecisionGraph 实现（P1）
+- ✅ 优化 feed 抽取提示词，明确时间相关信息若存在（可推断）尽可能出现在 feed 中（P0）
+- 外嵌 ReAct Agent，构建为通用 agent 架构（P0）
 - 修正场景专门开发 CorrectionGraph，在第一层 Coordinator 分类调用（P1）
+- 内置名人 FR （P0）
+- ❌ multi-env, multi-service 支持（P1）
+- 纠偏 CorrectionGraph、多维度分析 AnalysisGraph、辅助决策 DecisionGraph 实现（P1）
 - 日志治理（P1）
 - words_figure2user, words_user2figure 字段需要更严格的限制（P1）
 - Viking 接入（P2）
