@@ -1,6 +1,6 @@
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 import uuid
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, BaseMessage
@@ -43,6 +43,14 @@ def _getMessageRoundUUID(message: BaseMessage) -> str | None:
     additional_kwargs = getattr(message, "additional_kwargs", {}) or {}
     round_uuid = additional_kwargs.get("round_uuid")
     return round_uuid if isinstance(round_uuid, str) and round_uuid.strip() else None
+
+
+def _buildMessageContent(content: str) -> str:
+    """
+    为消息内容附加 UTC 时间戳，便于后续模型感知消息时间
+    """
+    timestamp = datetime.now(timezone.utc).isoformat()
+    return f"[timestamp={timestamp}]\n{content}"
 
 
 def _stringifyMessagesForSummary(messages: List[BaseMessage]) -> str:
@@ -432,7 +440,7 @@ async def nodeBuildAndTrimMessage(state: ConversationGraphState) -> dict:
     # 添加本轮次 HumanMessage
     messages.append(
         HumanMessage(
-            content=messages_received or "",
+            content=_buildMessageContent(messages_received or ""),
             additional_kwargs={"round_uuid": state.get("round_uuid")},
         )
     )
@@ -484,12 +492,10 @@ async def nodeCallLLM(state: ConversationGraphState) -> ConversationGraphOutput:
     messages = state.get("messages") or []
     conversation_summary = (state.get("conversation_summary") or "").strip()
 
-    current_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     CONVERSATION_SYSTEM_PROMPT = await getPrompt(
         os.getenv("CONVERSATION_SYSTEM_PROMPT"),
         {
             "words_to_user": state["words_to_user"],
-            "current_timestamp": current_timestamp,
             "user_name": state["user_name"],
         },
     )
@@ -637,7 +643,7 @@ async def nodeCallLLM(state: ConversationGraphState) -> ConversationGraphOutput:
     if figure_messages_this_round:
         next_messages = messages + [
             AIMessage(
-                content="\n".join(figure_messages_this_round),
+                content=_buildMessageContent("\n".join(figure_messages_this_round)),
                 additional_kwargs={"round_uuid": state.get("round_uuid")},
             )
         ]

@@ -78,5 +78,4 @@ You must not:
 
 # Additional Information
 
-- Current time: {{current_timestamp}}
 - The other person's name: {{user_name}}

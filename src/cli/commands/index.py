@@ -799,7 +799,7 @@ def logsCLI(args: Namespace) -> int:
                 exit_code=1,
             ) from err
 
-    current_date = datetime.now().strftime("%Y%m%d")
+    current_date = datetime.now().astimezone().strftime("%Y%m%d")
     if not date:
         date = current_date
 

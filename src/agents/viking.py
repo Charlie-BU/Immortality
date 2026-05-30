@@ -3,7 +3,7 @@ todo
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from vikingdb import APIKey
 from vikingdb.memory import VikingMem
 from vikingdb.exceptions import VikingException
@@ -58,7 +58,7 @@ def add_memory_sessions(collection):
             "metadata": {
                 "default_user_id": "user_001",
                 "default_assistant_id": "assistant_001",
-                "time": int(datetime.now().timestamp() * 1000),
+                "time": int(datetime.now(timezone.utc).timestamp() * 1000),
             },
         },
         {
@@ -78,7 +78,7 @@ def add_memory_sessions(collection):
             "metadata": {
                 "default_user_id": "user_001",
                 "default_assistant_id": "assistant_001",
-                "time": int(datetime.now().timestamp() * 1000),
+                "time": int(datetime.now(timezone.utc).timestamp() * 1000),
             },
         },
         {
@@ -98,7 +98,7 @@ def add_memory_sessions(collection):
             "metadata": {
                 "default_user_id": "user_001",
                 "default_assistant_id": "assistant_001",
-                "time": int(datetime.now().timestamp() * 1000),
+                "time": int(datetime.now(timezone.utc).timestamp() * 1000),
             },
         },
     ]
