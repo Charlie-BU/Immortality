@@ -1,3 +1,52 @@
+## CHANGELOG - 2026-06-03 16:24 - GeneralGraph 骨架落盘并抽离通用 tool call 处理层
+
+### 撰写时间
+
+- 2026-06-03 16:24
+
+### Base Commit
+
+- a59ab42528e53af871ebb274822101e859e72507
+
+### Compare Scope
+
+- working_tree_only
+
+### 背景与改动目标
+
+- 这轮工作区改动的目标不是把通用 Agent 一次性做完，而是先把 `GeneralGraph` 的骨架和路由边界落到代码里。前面的讨论已经把方向收敛到一个统一入口：用户通过自然语言表达需求，Coordinator 先做意图判断，再决定进入对话、补料、FR 管理或冲突处理等分支。
+- 一开始最容易走偏的地方，是把“通用 Agent”直接写成一个能自由调用任意 service 的大入口。但顺着现有代码继续看，会发现当前项目已经有比较稳定的子图和 service 边界，例如 `ConversationGraph`、`FRBuildingGraph`、`dispatchServiceCall()`。因此这次没有急着补执行逻辑，而是先把 `GeneralGraph` 的 state、intent 和路由 tool 设计成显式结构，给后续节点实现留出可控的落点。
+
+### 改动概览
+
+- 新增 `src/agents/graphs/GeneralGraph/README.md`，把这一轮通用 Agent 的设计起点直接写在图目录下，明确首批场景包括 `conversation`、`fr_building`、`auth whoami`、`fr add/list/show/sync-feeds` 以及后续可能继续暴露的 service 能力。
+- 新增 `src/agents/graphs/GeneralGraph/state.py`，补出 `GeneralGraphState` 的基础结构、`INTENT_ARGUMENTS_MAP`、澄清轮次状态、意图枚举、FR 相关上下文和执行结果字段，让后续 `Coordinator -> clarify -> execute` 这条链路有统一状态面。
+- 新增 `src/agents/graphs/GeneralGraph/tools.py`，把意图路由拆成一组只负责 handoff 的 tool，例如 `handoff2ConversationGraph()`、`handoff2FRBuildingGraph()`、`handoff2FRShow()`、`handoff2FRConflictResolve()`。这些 tool 不执行业务逻辑，重点落在 docstring 上，让 LLM 先稳定选对 intent，再进入后续补参或执行阶段。
+- 新增 `src/agents/tool_call.py`，把原先放在 `src/agents/tools.py` 里的通用 tool call 处理逻辑抽出来，保留 `ToolAndItsArgsHandler` 和 `handleIfToolCall()` 这两个基础能力，同时删除旧文件 `src/agents/tools.py`，避免后面在“通用 tool 处理”和“GeneralGraph 路由 tool”之间混用同一个模块名。
+- 更新 `.trae/deepwiki/开发与贡献指南.md`，把开发路径中的 tool 定义位置从旧的 `src/agents/tools.py` 同步到新的 `src/agents/tool_call.py`，让文档和当前目录结构保持一致。
+
+### 关键链路解析（含上下游）
+
+- 上游依赖：这次骨架设计直接建立在现有 `ConversationGraph`、`FRBuildingGraph`、`src/services/*` 和 `dispatchServiceCall()` 已经存在的前提上。换句话说，`GeneralGraph` 不是要重新实现这些能力，而是要做它们的自然语言编排层。
+- 当前改动：`state.py` 负责定义“意图、槽位、澄清、执行结果”的统一状态面；`tools.py` 负责让 LLM 先通过 tool call 选中目标 intent；`tool_call.py` 则提供通用的 tool 调用循环和参数处理能力。这样分层之后，意图路由、参数补全和具体执行可以继续拆节点做，而不必把所有事情揉进一个大函数里。
+- 下游影响：后续 `GeneralGraph/graph.py` 和 `GeneralGraph/nodes.py` 可以直接消费这套 state 和 handoff tool 约定，去实现 Coordinator、clarify 和 execute 节点。与此同时，DeepWiki 文档里的开发说明也开始对齐新的模块命名，后面再扩 tool 体系时不需要继续沿用已经删除的 `src/agents/tools.py` 路径。
+
+### 改动结果与业务影响
+
+- 当前看，这轮最大的收益是“通用 Agent 的边界终于进入代码”。虽然 `GeneralGraph` 的执行节点还没有开始写，但 intent 集合、状态面和路由入口已经不再只停留在 README 讨论里。
+- 另一个收益是模块职责更清楚了。`src/agents/tool_call.py` 现在只承担通用 tool call 基础设施；`src/agents/graphs/GeneralGraph/tools.py` 则专注于 GeneralGraph 的 handoff tool。这样后续继续扩别的 graph 或 agent 时，不容易再把“路由 tool”与“tool 执行框架”混在一起。
+- 这次做法也保留了一个明确边界：当前落地的是设计骨架，不是完整可运行链路。`GeneralGraph/graph.py` 与 `GeneralGraph/nodes.py` 还没有实现，因此这轮产出更接近“把后续迭代的接口和结构定下来”，而不是已经提供一个可执行的新 Agent。
+
+### 风险与待办
+
+- 当前仍有一个显式边界：`GeneralGraph` 的图编排和节点执行逻辑还没有写，现阶段只能认为状态与路由设计已初步成型，不能把这轮记录包装成“通用 Agent 已完成”。
+- 已知待办：`INTENT_ARGUMENTS_MAP` 和首版 intent 集合还会继续调整，尤其是 `fr_sync_feeds`、冲突处理这类既有单 FR 路径又有批量/决策路径的能力，后面仍需要把参数模型进一步收紧。
+- 未验证项：这次没有新增自动化验证去证明 `handoff tool -> intent -> required slots` 这条链路在真实模型调用下是否稳定，当前更多依赖结构设计和后续实现计划。
+
+### 建议 Commit Message（git-cz）
+
+- `feat(general-graph): scaffold intent routing and tool-call layer`
+
 ## CHANGELOG - 2026-05-30 12:04 - feed 抽取补齐时间锚点约束，减少跨时间语境误召回
 
 ### 撰写时间

@@ -1,0 +1,12 @@
+现在，我需要开始一个全新的迭代周期：本次迭代，我需要将现有 agent 能力全部封装在一个通用 agent 内。允许用户通过自然语言直接调用各种能力。我将通过 GeneralGraph 落地实现。经过参考 deerflow 的实现方案，我大体有以下想法：
+- 在 GeneralGraph 中。每个 node 处理特定的任务
+- 第一个 node 为 Coordinator，负责根据用户输入的语义进行预处理。本 agent 中，可能会存在以下场景：
+    - 若与以下涉及场景无关或不合规，直接礼貌回应并结束；
+    - 进入 Conversation 模式：需要提供 fr 信息，若无法确定则补充；
+    - FRBuilding：需要提供 fr 信息，以及本次补充的原材料，若不全则补充；
+    - auth whoami：无需额外信息；
+    - fr add：需要提供新增的 fr 信息（参考 fr add 命令所需参数）；
+    - fr list：无需额外信息；
+    - fr show：需要提供 fr 相关信息；
+    - fr sync-feeds：无需额外信息；
+    - 【src/services】中其他可暴露的能力

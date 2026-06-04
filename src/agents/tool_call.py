@@ -1,20 +1,12 @@
-"""
-todo
-"""
-
 import json
 import logging
-from typing import Annotated, Callable, List
+from typing import Callable, List
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import AIMessage, ToolMessage
-from langchain_core.tools import BaseTool, tool
+from langchain_core.tools import BaseTool
 from langgraph.graph.state import Runnable
 
-# from src.database.index import session
-# from src.database.models import 
-
 logger = logging.getLogger(__name__)
-
 
 
 class ToolAndItsArgsHandler:
@@ -22,6 +14,7 @@ class ToolAndItsArgsHandler:
     tool 及其参数处理
     用于自定义 tool 参数处理逻辑
     """
+
     def __init__(self, tool: BaseTool, args_handler: Callable | None = None):
         self.tool = tool
         self.args_handler = args_handler  # 手动处理tool call参数的方法。接受两个参数：tool_call和messages。返回处理后的参数dict。
@@ -58,7 +51,7 @@ async def handleIfToolCall(
     tool call 方法
     用于处理 llm 给出的 tool call，调用对应的 tool
     返回 tool call 后的 AIMessage 和全量 messages
-    
+
     使用方式 demo：
     llm_with_tools = llm.bind_tools([tool1, tool2])
     response = await llm_with_tools.ainvoke(messages)
@@ -134,15 +127,3 @@ async def handleIfToolCall(
         tool_round += 1
 
     return llm_response, messages
-
-
-# @tool
-# def useKnowledge(relation_chain_id: Annotated[int, "Relation chain id"]) -> str:
-#     """Get MBTI/personality knowledge for this relation_chain to enrich persona and relationship context."""
-#     logger.info(f"useKnowledge Tool called with relation_chain_id: {relation_chain_id}")
-#     with session() as db:
-#         relation_chain = db.get(RelationChain, relation_chain_id)
-#         if relation_chain is None:
-#             logger.error(f"Relation chain {relation_chain_id} not found")
-#             return ""
-#         return relation_chain.relevant_knowledge
